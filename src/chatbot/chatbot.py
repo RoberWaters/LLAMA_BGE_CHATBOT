@@ -12,15 +12,16 @@ from rag.rag_pipeline import RAGPipeline
 class RAGChatbot:
     """Chatbot con historial de conversación y sistema RAG"""
 
-    def __init__(self, docs_folder: str = "data/docs", max_history: int = 5):
+    def __init__(self, docs_folder: str = "data/docs", max_history: int = 5, llm_provider: str = "groq"):
         """
         Inicializa el chatbot
 
         Args:
             docs_folder: Carpeta con documentos
             max_history: Número máximo de mensajes a recordar en el historial
+            llm_provider: Proveedor de LLM ("groq" o "deepseek")
         """
-        self.pipeline = RAGPipeline(docs_folder)
+        self.pipeline = RAGPipeline(docs_folder, llm_provider=llm_provider)
         self.max_history = max_history
         self.conversation_history = []
 

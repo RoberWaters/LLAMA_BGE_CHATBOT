@@ -1,9 +1,9 @@
-# Sistema RAG - BGE-M3 + SQL Server + DeepSeek
+# Sistema RAG - BGE-M3 + SQL Server + Groq/DeepSeek
 
 Sistema completo de Recuperación Aumentada por Generación (RAG) que utiliza:
 - **BGE-M3** para generar embeddings semánticos
 - **SQL Server** para almacenar documentos y vectores
-- **DeepSeek API** como modelo de lenguaje para generar respuestas
+- **Groq API** (ultra-rápido, 10x más rápido) o **DeepSeek API** como modelo de lenguaje
 
 ## 📋 Características
 
@@ -107,16 +107,38 @@ DB_NAME=RAG_Database
 DB_USER=sa
 DB_PASSWORD=TuPassword123
 
-# DeepSeek API
-DEEPSEEK_API_KEY=tu_api_key_aqui
+# LLM API - Usa Groq (recomendado) o DeepSeek
+# Groq API (ultra-rápido, 14,400 requests/día gratis)
+GROQ_API_KEY=tu_groq_api_key_aqui
+
+# DeepSeek API (alternativa más lenta pero buena calidad)
+DEEPSEEK_API_KEY=tu_deepseek_api_key_aqui
 ```
 
-**Obtener API Key de DeepSeek:**
+**Obtener API Key de Groq** (Recomendado - Ultra Rápido ⚡):
+1. Visita [https://console.groq.com/](https://console.groq.com/)
+2. Crea una cuenta gratuita
+3. Ve a API Keys
+4. Genera una nueva API key
+5. Cópiala en el archivo `.env` como `GROQ_API_KEY`
+
+**Obtener API Key de DeepSeek** (Alternativa):
 1. Visita [https://platform.deepseek.com/](https://platform.deepseek.com/)
 2. Crea una cuenta o inicia sesión
 3. Ve a la sección de API Keys
 4. Genera una nueva API key
-5. Cópiala en el archivo `.env`
+5. Cópiala en el archivo `.env` como `DEEPSEEK_API_KEY`
+
+**Comparación de LLMs:**
+
+| Característica | Groq ⚡ | DeepSeek |
+|----------------|---------|----------|
+| **Velocidad** | ~200-500ms | ~1-3 segundos |
+| **Gratis/día** | 14,400 requests | Según plan |
+| **Modelos** | Mixtral, Llama 3.3 | DeepSeek-Chat |
+| **Calidad** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+
+💡 **Recomendación**: Usa **Groq** para velocidad óptima (10x más rápido) con tier gratuito generoso.
 
 ### 6. Preparar documentos
 

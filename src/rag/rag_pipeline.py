@@ -5,24 +5,27 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import os
 from typing import List, Optional
 from embeddings.embedder import Embedder
 from database.connection import DatabaseConnection
 from database.repository import DocumentRepository
 from ingestion.ingest_docs import DocumentIngestion
 from llm.deepseek_client import DeepSeekClient
+from llm.groq_client import GroqClient
 from rag.retriever import DocumentRetriever
 
 
 class RAGPipeline:
     """Pipeline completo para el sistema RAG"""
 
-    def __init__(self, docs_folder: str = "data/docs"):
+    def __init__(self, docs_folder: str = "data/docs", llm_provider: str = "groq"):
         """
         Inicializa el pipeline RAG
 
         Args:
             docs_folder: Carpeta con los documentos markdown
+            llm_provider: Proveedor de LLM ("groq" o "deepseek")
         """
         print("Inicializando pipeline RAG...")
 
@@ -35,7 +38,17 @@ class RAGPipeline:
         self.repository = DocumentRepository(self.db_connection)
         self.ingestion = DocumentIngestion(docs_folder)
         self.retriever = DocumentRetriever(self.repository, self.embedder)
-        self.llm_client = DeepSeekClient()
+
+        # Inicializar LLM según el proveedor
+        self.llm_provider = llm_provider.lower()
+        if self.llm_provider == "groq":
+            self.llm_client = GroqClient(model="mixtral-8x7b-32768")
+            print("✨ Usando Groq API (ultra-rápido)")
+        elif self.llm_provider == "deepseek":
+            self.llm_client = DeepSeekClient()
+            print("🔷 Usando DeepSeek API")
+        else:
+            raise ValueError(f"LLM provider no soportado: {llm_provider}. Usa 'groq' o 'deepseek'")
 
         print("Pipeline RAG inicializado exitosamente\n")
 
