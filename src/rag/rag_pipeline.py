@@ -42,8 +42,8 @@ class RAGPipeline:
         # Inicializar LLM según el proveedor
         self.llm_provider = llm_provider.lower()
         if self.llm_provider == "groq":
-            self.llm_client = GroqClient(model="mixtral-8x7b-32768")
-            print("✨ Usando Groq API (ultra-rápido)")
+            self.llm_client = GroqClient(model="llama-3.3-70b-versatile")
+            print("✨ Usando Groq API con Llama 3.3 70B (ultra-rápido)")
         elif self.llm_provider == "deepseek":
             self.llm_client = DeepSeekClient()
             print("🔷 Usando DeepSeek API")

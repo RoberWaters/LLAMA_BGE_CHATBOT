@@ -10,15 +10,15 @@ from groq import Groq
 class GroqClient:
     """Cliente para la API de Groq con modelos ultra-rápidos"""
 
-    def __init__(self, model: str = "mixtral-8x7b-32768"):
+    def __init__(self, model: str = "llama-3.3-70b-versatile"):
         """
         Inicializa el cliente de Groq
 
         Args:
             model: Modelo a usar. Opciones:
-                - "mixtral-8x7b-32768": Mixtral 8x7B (balance velocidad/calidad)
-                - "llama-3.3-70b-versatile": Llama 3.3 70B (mejor calidad)
+                - "llama-3.3-70b-versatile": Llama 3.3 70B (mejor calidad, recomendado)
                 - "llama-3.1-8b-instant": Llama 3.1 8B (más rápido)
+                - "llama-3.2-90b-text-preview": Llama 3.2 90B (experimental)
         """
         load_dotenv()
 
