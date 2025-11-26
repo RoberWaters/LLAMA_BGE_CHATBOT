@@ -73,7 +73,7 @@ def main():
                 # Obtener respuesta del chatbot
                 result = chatbot.chat(
                     user_message=user_input,
-                    top_k=3,
+                    top_k=4,
                     temperature=0.7,
                     use_rag=True
                 )

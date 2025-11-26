@@ -45,7 +45,7 @@ class RAGChatbot:
     def chat(
         self,
         user_message: str,
-        top_k: int = 3,
+        top_k: int = 4,
         temperature: float = 0.7,
         use_rag: bool = True
     ) -> dict:

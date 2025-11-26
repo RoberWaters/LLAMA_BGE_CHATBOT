@@ -34,7 +34,7 @@ class GroqClient:
         query: str,
         context_documents: List[str],
         temperature: float = 0.3,
-        max_tokens: int = 600
+        max_tokens: int = 850
     ) -> str:
         """
         Genera una respuesta usando el contexto RAG
