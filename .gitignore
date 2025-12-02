@@ -26,6 +26,7 @@ ENV/
 *.swo
 *~
 CLAUDE.md
+COST_ANALYSIS.md
 
 # OS
 .DS_Store
