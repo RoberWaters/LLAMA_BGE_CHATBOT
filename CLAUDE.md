@@ -135,9 +135,10 @@ python src/rag/retriever.py
 
 **DocumentRetriever** (`src/rag/retriever.py`)
 - Semantic search implementation
-- Generates query embedding and uses ChromaDB's `.query()` method for HNSW search
+- Retrieves all documents from repository and calculates cosine similarity against query embedding
 - Returns top-k most relevant documents with cosine similarity scores
 - Method: `retrieve_relevant_documents(query, top_k)` returns list of (filename, content, similarity_score) tuples
+- Note: Currently implements manual similarity calculation rather than using ChromaDB's built-in search
 
 **LLM Clients**
 - `GroqClient` (`src/llm/groq_client.py`): Ultra-fast responses using Llama 3.3 70B (model: "llama-3.3-70b-versatile")
@@ -161,18 +162,19 @@ python src/rag/retriever.py
 
 **Ingestion Pipeline:**
 1. Load .md files from `data/docs/`
-2. Clean/preprocess text
+2. Clean/preprocess text (remove extra whitespace, normalize line breaks)
 3. Generate BGE-M3 embeddings (1024-dim float32)
 4. Convert embedding to list for ChromaDB
 5. Add to ChromaDB collection with metadata (filename, content)
 
 **Query Pipeline:**
 1. Convert user question to embedding
-2. Use ChromaDB's `.query()` method with HNSW algorithm
-3. Retrieve top-k most similar documents with cosine similarity scores
-4. Build RAG prompt with context documents
-5. Send to Groq/DeepSeek API
-6. Return response with sources
+2. Retrieve all documents with their embeddings from ChromaDB
+3. Calculate cosine similarity between query embedding and each document embedding
+4. Sort by similarity and select top-k documents
+5. Build RAG prompt with context documents
+6. Send to Groq/DeepSeek API
+7. Return response with sources
 
 ### Critical Implementation Details
 
@@ -184,13 +186,16 @@ doc_id = filename.replace(" ", "_").replace("/", "_").replace("\\", "_")  # Sani
 collection.add(embeddings=[embedding_list], documents=[content],
                metadatas=[{"filename": filename}], ids=[doc_id])
 
-# Search - ChromaDB uses HNSW with cosine similarity
-query_list = query_embedding.astype('float32').tolist()
+# Retrieve all documents
+results = collection.get(include=["embeddings", "documents", "metadatas"])
+# Returns: results['embeddings'][i] is embedding as list
+#          results['documents'][i] is document content
+#          results['metadatas'][i] is metadata dict with 'filename' key
+
+# Direct search with ChromaDB (available but not currently used by retriever)
 results = collection.query(query_embeddings=[query_list], n_results=top_k,
                           include=["documents", "metadatas", "distances"])
 # Returns: results['distances'][0][i] is cosine distance (convert to similarity: 1 - distance)
-#          results['documents'][0][i] is document content
-#          results['metadatas'][0][i] is metadata dict with 'filename' key
 ```
 
 **RAG Prompt Pattern:**
@@ -257,6 +262,7 @@ DEEPSEEK_API_KEY=your_deepseek_api_key_here  # Alternative
 - `src/llm/groq_client.py`: Groq API client (recommended, ultra-fast)
 - `src/llm/deepseek_client.py`: DeepSeek API client
 - `src/rag/retriever.py`: Semantic search with cosine similarity
+- `src/ingestion/ingest_docs.py`: Document loading and preprocessing
 
 ## Error Handling Notes
 
@@ -290,3 +296,11 @@ All modules handle common errors:
 - Distance values are cosine distances (0 = identical, 2 = opposite)
 - Collection persistence is automatic - no explicit save/commit needed
 - Deleting collection and recreating is the fastest way to clear all documents
+
+## Implementation Notes
+
+**Retriever Architecture:**
+The current retriever implementation (src/rag/retriever.py) retrieves all documents and manually calculates cosine similarity. For better performance with large document collections, consider using ChromaDB's built-in `.query()` method in `ChromaVectorStore.search_similar()`.
+
+**Text Chunking:**
+When using `--chunk` flag during ingestion, documents are split into overlapping chunks (default: 1000 chars with 200 char overlap). Chunks are named as `filename_chunk_N`. This improves retrieval quality for large documents.

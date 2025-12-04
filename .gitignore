@@ -25,7 +25,6 @@ ENV/
 *.swp
 *.swo
 *~
-CLAUDE.md
 COST_ANALYSIS.md
 
 # OS
@@ -41,9 +40,13 @@ Thumbs.db
 # Database
 *.db
 *.sqlite
+data/chroma/
 
 # Gradio
 .gradio/
+
+# Electron app
+electron_app/
 
 # Test files
 test.txt
