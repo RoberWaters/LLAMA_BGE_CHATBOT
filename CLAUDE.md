@@ -11,6 +11,7 @@ RAG (Retrieval-Augmented Generation) system using BGE-M3 embeddings with ChromaD
 - BGE-M3 embeddings (1024 dimensions, float32)
 - ChromaDB vector database with HNSW indexing
 - Groq API (ultra-fast, recommended, uses Llama 3.3 70B) or DeepSeek API for LLM
+- **Hybrid FAQ system with double thresholds (85%/75%)** for precise question answering
 - Interactive chatbot with conversation history (last 5 messages)
 - CLI for queries and document management
 
@@ -151,12 +152,26 @@ python src/rag/retriever.py
 - Wraps RAGPipeline with conversation history management
 - Maintains last N messages as list of (user_message, assistant_message) tuples (default: 5)
 - Automatically truncates history when exceeding max_history
+- Uses hybrid FAQ system via `query_with_faq()` by default
 - Supports both RAG-based (`use_rag=True`) and history-only (`use_rag=False`) chat modes
 - Key methods:
   - `chat(user_message, top_k, temperature, use_rag)`: Process message and generate response
   - `clear_history()`: Clears conversation history
   - `get_history()`: Returns copy of conversation history
   - `set_max_history(max_history)`: Updates max history size
+
+**FAQHandler** (`src/rag/faq_handler.py`)
+- Implements hybrid FAQ system with double thresholds
+- Classifies queries into three match types based on FAQ similarity:
+  - `high` (≥85%): Returns only top-3 FAQs with temperature 0.1
+  - `medium` (75-84%): Returns top-2 FAQs + top-2 docs with temperature 0.2
+  - `low` (<75%): Returns only general documents with temperature 0.3
+- Filters documents from `data/docs/faq/` directory as FAQ sources
+- Key methods:
+  - `classify_query(query, top_k)`: Returns match_type, faq_results, best_similarity
+  - `get_context_for_llm(query, match_type, faq_results, doc_results)`: Returns (context_documents, context_type)
+  - `get_temperature_for_context(context_type)`: Returns optimal temperature for context type
+  - `should_use_faq(query)`: Determines if FAQ search applies (filters out special commands)
 
 ### Data Flow
 
@@ -167,7 +182,19 @@ python src/rag/retriever.py
 4. Convert embedding to list for ChromaDB
 5. Add to ChromaDB collection with metadata (filename, content)
 
-**Query Pipeline:**
+**Query Pipeline (with FAQ system):**
+1. Convert user question to embedding
+2. Classify query against FAQs using similarity thresholds (85%/75%)
+3. Based on match_type, prepare context:
+   - `high`: Only top-3 FAQs from `data/docs/faq/`
+   - `medium`: Top-2 FAQs + top-2 general documents (non-FAQ)
+   - `low`: Only general documents (excludes FAQs)
+4. Adjust temperature based on context_type (0.1 for FAQ-only, 0.2 for hybrid, 0.3 for docs-only)
+5. Build specialized RAG prompt with context-appropriate instructions
+6. Send to Groq/DeepSeek API
+7. Return response with sources and match metadata (match_type, best_faq_similarity)
+
+**Legacy Query Pipeline (without FAQ):**
 1. Convert user question to embedding
 2. Retrieve all documents with their embeddings from ChromaDB
 3. Calculate cosine similarity between query embedding and each document embedding
@@ -232,6 +259,48 @@ doc_id = filename.replace(" ", "_").replace("/", "_").replace("\\", "_")
 # Used for both storage and retrieval operations
 ```
 
+**FAQ System Workflow:**
+The hybrid FAQ system uses a double-threshold approach:
+```python
+# In FAQHandler
+HIGH_THRESHOLD = 0.85   # Changed from 0.90 for better coverage
+MEDIUM_THRESHOLD = 0.75 # Changed from 0.80 for better coverage
+
+# Query classification
+faq_classification = faq_handler.classify_query(query, top_k=5)
+# Returns: {'match_type': 'high'|'medium'|'low',
+#           'faq_results': [(filename, content, score), ...],
+#           'best_similarity': 0.87}
+
+# Context preparation based on match_type
+context_docs, context_type = faq_handler.get_context_for_llm(
+    query, match_type, faq_results, doc_results
+)
+# Returns context_type: 'faq_only', 'faq_and_docs', or 'docs_only'
+
+# Temperature adjustment
+temp = faq_handler.get_temperature_for_context(context_type)
+# Returns: 0.1 (faq_only), 0.2 (faq_and_docs), 0.3 (docs_only)
+```
+
+**FAQ Document Structure:**
+FAQs are stored in `data/docs/faq/` and identified by path prefix:
+```python
+# During classification, filter for FAQs
+faq_results = [
+    (filename, content, score)
+    for filename, content, score in all_results
+    if filename.startswith('faq/')  # Only documents from faq/ subdirectory
+]
+
+# During doc retrieval, exclude FAQs
+doc_results = [
+    (filename, content, score)
+    for filename, content, score in all_docs
+    if not filename.startswith('faq/')  # Exclude FAQ directory
+]
+```
+
 ## Environment Variables
 
 Required in `.env` (create from `.env.example`):
@@ -252,17 +321,18 @@ DEEPSEEK_API_KEY=your_deepseek_api_key_here  # Alternative
 
 ## Key Files
 
-- `src/main.py`: CLI entry point for ingestion/queries
-- `src/chat.py`: Interactive chatbot entry point
-- `src/rag/rag_pipeline.py`: Main orchestrator
-- `src/chatbot/chatbot.py`: Chatbot with conversation history
+- `src/main.py`: CLI entry point for ingestion/queries (uses legacy `query()` without FAQ)
+- `src/chat.py`: Interactive chatbot entry point (uses `query_with_faq()`)
+- `src/rag/rag_pipeline.py`: Main orchestrator with both `query()` and `query_with_faq()` methods
+- `src/chatbot/chatbot.py`: Chatbot with conversation history (uses FAQ system by default)
+- `src/rag/faq_handler.py`: FAQ classification and context preparation with double thresholds
 - `src/embeddings/embedder.py`: BGE-M3 embedding generation
 - `src/database/repository.py`: CRUD operations abstraction
 - `src/database/chroma_vector_store.py`: ChromaDB backend
-- `src/llm/groq_client.py`: Groq API client (recommended, ultra-fast)
-- `src/llm/deepseek_client.py`: DeepSeek API client
-- `src/rag/retriever.py`: Semantic search with cosine similarity
-- `src/ingestion/ingest_docs.py`: Document loading and preprocessing
+- `src/llm/groq_client.py`: Groq API client with context-aware prompts (recommended, ultra-fast)
+- `src/llm/deepseek_client.py`: DeepSeek API client with context-aware prompts
+- `src/rag/retriever.py`: Semantic search with cosine similarity and threshold filtering
+- `src/ingestion/ingest_docs.py`: Document loading and preprocessing (recursive, includes subdirectories)
 
 ## Error Handling Notes
 
@@ -304,3 +374,51 @@ The current retriever implementation (src/rag/retriever.py) retrieves all docume
 
 **Text Chunking:**
 When using `--chunk` flag during ingestion, documents are split into overlapping chunks (default: 1000 chars with 200 char overlap). Chunks are named as `filename_chunk_N`. This improves retrieval quality for large documents.
+
+**FAQ System Design Choices:**
+
+1. **Double Threshold Approach (85%/75%):**
+   - Originally designed with 90%/80% thresholds, adjusted to 85%/75% for better coverage
+   - High threshold ensures precise matches for exact FAQ questions
+   - Medium threshold captures paraphrased questions while still providing FAQ context
+   - Low threshold falls back to general document search
+
+2. **Directory-based FAQ Identification:**
+   - FAQs must be in `data/docs/faq/` subdirectory
+   - Allows mixing FAQs and general documents in same ChromaDB collection
+   - Filtering by `filename.startswith('faq/')` is simple and reliable
+   - Alternative: Could use metadata tags, but directory approach is more intuitive
+
+3. **Context Separation:**
+   - High match: FAQ-only to prevent dilution with irrelevant docs
+   - Medium match: Hybrid approach balances precision and coverage
+   - Low match: Excludes FAQs entirely to avoid low-similarity FAQ noise
+
+4. **Temperature Adjustment:**
+   - Lower temperature (0.1) for FAQ-only ensures deterministic, exact answers
+   - Medium temperature (0.2) for hybrid allows slight flexibility
+   - Higher temperature (0.3) for docs-only enables more natural synthesis
+
+5. **LLM Prompt Specialization:**
+   - `context_type` parameter passed to LLM clients enables specialized prompts
+   - FAQ-only prompts emphasize using exact FAQ answers
+   - Hybrid prompts prioritize FAQs but allow doc supplementation
+   - Docs-only prompts use standard RAG instructions
+
+**Extending the FAQ System:**
+
+To add new FAQ categories:
+1. Create markdown files in `data/docs/faq/` (e.g., `faq_admissions.md`)
+2. Use consistent format with question/answer structure
+3. Run `python src/main.py --ingest` (or `--ingest --force` to reprocess)
+4. FAQs automatically included in classification
+
+To adjust thresholds:
+- Edit `HIGH_THRESHOLD` and `MEDIUM_THRESHOLD` in `src/rag/faq_handler.py`
+- Higher thresholds = stricter matching (fewer FAQ matches)
+- Lower thresholds = more permissive (more FAQ matches, but potentially less precise)
+
+To modify context composition:
+- Edit `get_context_for_llm()` in `src/rag/faq_handler.py`
+- Adjust number of FAQs/docs included per match type
+- Example: Change `faq_results[:3]` to `faq_results[:5]` for more FAQ context

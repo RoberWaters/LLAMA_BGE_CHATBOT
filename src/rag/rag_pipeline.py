@@ -14,6 +14,7 @@ from ingestion.ingest_docs import DocumentIngestion
 from llm.deepseek_client import DeepSeekClient
 from llm.groq_client import GroqClient
 from rag.retriever import DocumentRetriever
+from rag.faq_handler import FAQHandler
 
 
 class RAGPipeline:
@@ -38,6 +39,7 @@ class RAGPipeline:
         self.repository = DocumentRepository(self.storage)
         self.ingestion = DocumentIngestion(docs_folder)
         self.retriever = DocumentRetriever(self.repository, self.embedder)
+        self.faq_handler = FAQHandler(self.repository, self.embedder)
 
         # Inicializar LLM según el proveedor
         self.llm_provider = llm_provider.lower()
@@ -104,6 +106,159 @@ class RAGPipeline:
         print(f"Documentos saltados: {skipped_count}")
         print(f"Total en base de datos: {self.repository.count_documents()}")
         print("=" * 60)
+
+    def query_with_faq(
+        self,
+        question: str,
+        top_k: int = 3,
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
+        enable_faq: bool = True
+    ) -> dict:
+        """
+        Realiza una consulta con sistema FAQ híbrido (umbrales 90%/80%)
+
+        Args:
+            question: Pregunta del usuario
+            top_k: Número de documentos relevantes a recuperar
+            temperature: Temperatura base (se ajusta según contexto)
+            max_tokens: Máximo de tokens en la respuesta
+            enable_faq: Si es True, busca en FAQs primero
+
+        Returns:
+            Diccionario con la respuesta, metadatos y tipo de match
+        """
+        print("=" * 60)
+        print("PROCESANDO CONSULTA CON SISTEMA FAQ HÍBRIDO")
+        print("=" * 60)
+        print(f"Pregunta: {question}\n")
+
+        # Verificar que haya documentos
+        doc_count = self.repository.count_documents()
+        if doc_count == 0:
+            return {
+                "answer": "No hay documentos en la base de datos. Por favor, ejecuta primero la ingestion de documentos.",
+                "relevant_documents": [],
+                "match_type": "none",
+                "error": "No documents in database"
+            }
+
+        print(f"Documentos en base de datos: {doc_count}")
+
+        # PASO 1: Clasificar la consulta según FAQs
+        if enable_faq and self.faq_handler.should_use_faq(question):
+            print("\n🔍 Buscando en FAQs...")
+            faq_classification = self.faq_handler.classify_query(question, top_k=5)
+            match_type = faq_classification['match_type']
+            faq_results = faq_classification['faq_results']
+            best_similarity = faq_classification['best_similarity']
+
+            print(f"Match type: {match_type.upper()}")
+            print(f"Best FAQ similarity: {best_similarity:.2%}")
+        else:
+            match_type = 'low'
+            faq_results = []
+            best_similarity = 0.0
+            print("\n⏭️  Saltando búsqueda en FAQs (disabled o comando especial)")
+
+        # PASO 2: Obtener documentos si es necesario (EXCLUIR FAQs)
+        doc_results = []
+        if match_type in ['medium', 'low']:
+            print(f"\n📄 Buscando en documentos generales (top-{top_k})...")
+            all_docs = self.retriever.retrieve_relevant_documents(
+                query=question,
+                top_k=top_k * 2  # Buscar más para compensar filtrado
+            )
+
+            # Filtrar SOLO documentos que NO son FAQs
+            doc_results = [
+                (filename, content, score)
+                for filename, content, score in all_docs
+                if not filename.startswith('faq/')
+            ]
+
+            # Limitar a top_k
+            doc_results = doc_results[:top_k]
+
+        # PASO 3: Preparar contexto para el LLM
+        context_documents, context_type = self.faq_handler.get_context_for_llm(
+            query=question,
+            match_type=match_type,
+            faq_results=faq_results,
+            doc_results=doc_results
+        )
+
+        if not context_documents:
+            return {
+                "answer": "No se encontraron documentos relevantes para tu pregunta.",
+                "relevant_documents": [],
+                "match_type": match_type,
+                "error": "No relevant documents found"
+            }
+
+        # PASO 4: Ajustar temperatura según contexto
+        adjusted_temperature = self.faq_handler.get_temperature_for_context(context_type)
+
+        print(f"\n🎯 Tipo de contexto: {context_type}")
+        print(f"🌡️  Temperature ajustada: {adjusted_temperature}")
+        print(f"\n🤖 Generando respuesta con {self.llm_provider.upper()}...\n")
+
+        # PASO 5: Generar respuesta con LLM
+        try:
+            answer = self.llm_client.generate_response(
+                query=question,
+                context_documents=context_documents,
+                temperature=adjusted_temperature,
+                max_tokens=max_tokens,
+                context_type=context_type
+            )
+
+            print("=" * 60)
+            print("RESPUESTA GENERADA")
+            print("=" * 60)
+
+            # Preparar metadata de documentos relevantes
+            relevant_docs = []
+
+            # Agregar FAQs si se usaron
+            if faq_results:
+                for filename, content, score in faq_results[:3]:
+                    relevant_docs.append({
+                        "filename": filename,
+                        "similarity": score,
+                        "type": "faq",
+                        "preview": content[:200] + "..." if len(content) > 200 else content
+                    })
+
+            # Agregar docs generales si se usaron
+            if doc_results and match_type in ['medium', 'low']:
+                for filename, content, score in doc_results[:3]:
+                    relevant_docs.append({
+                        "filename": filename,
+                        "similarity": score,
+                        "type": "document",
+                        "preview": content[:200] + "..." if len(content) > 200 else content
+                    })
+
+            return {
+                "answer": answer,
+                "relevant_documents": relevant_docs,
+                "match_type": match_type,
+                "context_type": context_type,
+                "best_faq_similarity": best_similarity,
+                "error": None
+            }
+
+        except Exception as e:
+            error_msg = f"Error al generar respuesta: {str(e)}"
+            print(f"❌ {error_msg}")
+
+            return {
+                "answer": "Ocurrió un error al generar la respuesta.",
+                "relevant_documents": [],
+                "match_type": match_type,
+                "error": error_msg
+            }
 
     def query(
         self,

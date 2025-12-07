@@ -38,8 +38,8 @@ class DocumentIngestion:
         markdown_files = []
         docs_path = Path(self.docs_folder)
 
-        # Buscar archivos .md y .MD (case insensitive)
-        md_files = list(docs_path.glob("*.md")) + list(docs_path.glob("*.MD"))
+        # Buscar archivos .md y .MD recursivamente (incluye subdirectorios)
+        md_files = list(docs_path.glob("**/*.md")) + list(docs_path.glob("**/*.MD"))
 
         if not md_files:
             print(f"Advertencia: No se encontraron archivos .md o .MD en {self.docs_folder}")
@@ -50,7 +50,8 @@ class DocumentIngestion:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
 
-                filename = file_path.name
+                # Usar ruta relativa desde docs_folder para preservar estructura
+                filename = str(file_path.relative_to(docs_path))
                 markdown_files.append((filename, content))
                 print(f"Cargado: {filename}")
 

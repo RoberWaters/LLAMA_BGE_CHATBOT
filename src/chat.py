@@ -47,6 +47,8 @@ def main():
         print_separator()
         print("💡 Instrucciones:")
         print("  • Escribe tus preguntas y presiona Enter")
+        print("  • El sistema busca primero en FAQs (90%/80% umbral)")
+        print("  • Si no hay match en FAQs, busca en documentos generales")
         print("  • Comandos especiales:")
         print("    - 'salir' o 'exit': Terminar el chat")
         print("    - 'limpiar': Borrar historial de conversación")
@@ -89,11 +91,31 @@ def main():
                 # Mostrar respuesta
                 print(f"\n🤖 Chatbot: {result['answer']}\n")
 
+                # Mostrar información de match (si disponible)
+                if result.get("match_type"):
+                    match_icons = {
+                        'high': '🎯',
+                        'medium': '🔶',
+                        'low': '📄',
+                        'none': '❌'
+                    }
+                    match_type = result.get("match_type", "low")
+                    icon = match_icons.get(match_type, "📄")
+
+                    if match_type == 'high':
+                        print(f"{icon} Match: FAQ (similitud: {result.get('best_faq_similarity', 0):.1%})")
+                    elif match_type == 'medium':
+                        print(f"{icon} Match: FAQ + Documentos (similitud FAQ: {result.get('best_faq_similarity', 0):.1%})")
+                    elif match_type == 'low':
+                        print(f"{icon} Match: Solo documentos generales")
+
                 # Mostrar fuentes si están disponibles
                 if result.get("relevant_documents"):
-                    print("📚 Fuentes consultadas:")
-                    for i, doc in enumerate(result["relevant_documents"], 1):
-                        print(f"  {i}. {doc['filename']} (similitud: {doc['similarity']:.3f})")
+                    print("\n📚 Fuentes consultadas:")
+                    for i, doc in enumerate(result["relevant_documents"][:5], 1):
+                        doc_type = doc.get('type', 'document')
+                        type_icon = '❓' if doc_type == 'faq' else '📄'
+                        print(f"  {i}. {type_icon} {doc['filename']} (similitud: {doc['similarity']:.1%})")
                     print()
 
             except KeyboardInterrupt:

@@ -34,7 +34,8 @@ class GroqClient:
         query: str,
         context_documents: List[str],
         temperature: float = 0.3,
-        max_tokens: int = 850
+        max_tokens: int = 850,
+        context_type: str = "docs_only"
     ) -> str:
         """
         Genera una respuesta usando el contexto RAG
@@ -44,6 +45,7 @@ class GroqClient:
             context_documents: Lista de documentos relevantes como contexto
             temperature: Temperatura para la generación (0-1)
             max_tokens: Máximo de tokens en la respuesta
+            context_type: Tipo de contexto - 'faq_only', 'faq_and_docs', 'docs_only'
 
         Returns:
             Respuesta generada por Groq
@@ -51,12 +53,54 @@ class GroqClient:
         # Construir el prompt RAG
         context = "\n\n---\n\n".join(context_documents)
 
-        system_prompt = """Eres un asistente útil que responde preguntas basándose ÚNICAMENTE en el contexto proporcionado.
+        # Seleccionar prompt según tipo de contexto
+        if context_type == "faq_only":
+            system_prompt = """Eres un asistente de FAQ universitario.
+
+REGLAS ESTRICTAS:
+1. Responde ÚNICAMENTE usando las preguntas frecuentes (FAQs) proporcionadas
+2. Si la pregunta coincide con una FAQ, usa EXACTAMENTE la respuesta de esa FAQ
+3. NO combines información de múltiples FAQs a menos que sea necesario
+4. NO inventes información ni uses conocimiento externo
+5. Sé conciso y directo
+6. Si no hay una FAQ que responda la pregunta exactamente, di: "No encontré esa pregunta en mi FAQ"
+"""
+
+            user_prompt = f"""FAQs disponibles:
+
+{context}
+
+Pregunta del estudiante:
+{query}
+
+Instrucción: Responde SOLO si la pregunta coincide con una de las FAQs anteriores."""
+
+        elif context_type == "faq_and_docs":
+            system_prompt = """Eres un asistente universitario que ayuda a estudiantes.
+
+REGLAS:
+1. Tienes FAQs (preguntas frecuentes) y documentos adicionales
+2. PRIORIZA las FAQs si responden la pregunta
+3. Usa los documentos solo si las FAQs no son suficientes
+4. NO inventes información
+5. Sé conciso y preciso"""
+
+            user_prompt = f"""Contexto disponible (FAQs primero, luego documentos):
+
+{context}
+
+Pregunta del estudiante:
+{query}
+
+Instrucción: Prioriza la información de las FAQs si está disponible."""
+
+        else:  # docs_only (flujo original)
+            system_prompt = """Eres un asistente útil que responde preguntas basándose ÚNICAMENTE en el contexto proporcionado.
 Si la información no está en el contexto, di claramente que no tienes esa información.
 No inventes información ni uses conocimiento externo al contexto.
 Sé conciso y directo en tus respuestas."""
 
-        user_prompt = f"""Usa SOLO esta información de contexto para responder:
+            user_prompt = f"""Usa SOLO esta información de contexto para responder:
 
 {context}
 

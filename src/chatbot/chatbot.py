@@ -68,12 +68,13 @@ class RAGChatbot:
                 "error": "Empty message"
             }
 
-        # Si usa RAG, hacer consulta normal con contexto de documentos
+        # Si usa RAG, hacer consulta con sistema FAQ híbrido
         if use_rag:
-            result = self.pipeline.query(
+            result = self.pipeline.query_with_faq(
                 question=user_message,
                 top_k=top_k,
-                temperature=temperature
+                temperature=temperature,
+                enable_faq=True
             )
         else:
             # Sin RAG, solo conversación con historial
