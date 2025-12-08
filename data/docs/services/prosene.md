@@ -1,0 +1,2 @@
+## Ayudas a Estudiantes con discapacidades de Movilidad
+Un estudiantes que quiere formar de Prosene para este tipos de ayudas, puede avocar a las Oficinas de Prosene (Anexo de la VOAE, frente el Edifico E1) o contactar por correo a Lic. Flora Giron flora.giron@unah.edu.hn. 

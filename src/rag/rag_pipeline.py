@@ -20,7 +20,7 @@ from rag.faq_handler import FAQHandler
 class RAGPipeline:
     """Pipeline completo para el sistema RAG"""
 
-    def __init__(self, docs_folder: str = "data/docs", llm_provider: str = "groq"):
+    def __init__(self, docs_folder: str = "data/docs", llm_provider: str = "deepseek"):
         """
         Inicializa el pipeline RAG con ChromaDB
 

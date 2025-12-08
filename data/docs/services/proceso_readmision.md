@@ -22,8 +22,7 @@ En cumplimiento al ACUERDO No. CU-O-003-01-2024, y lo dispuesto en el DICTAMEN 0
 **Nota:** Si no cumple con los requisitos 2 y 3, problablemente solo sea necesario reactivar su cuenta universitaria.
 ## Procedimiento a seguir
 - **Paso 1:** Ingreso a la página
-Acceder a la página de la Dirección de Ingreso, Permanencia y Promoción: https://registro.unah.edu.hn/.
-Completar el formulario “Solicitud de - Estudiantes Readmitidos” con la información personal requerida.
+Acceder a la página de la Dirección de Ingreso, Permanencia y Promoción: https://registro.unah.edu.hn/.Completar el formulario “Solicitud de - Estudiantes Readmitidos” con la información personal requerida.
 Descargar, completar y firmar manualmente la “Carta de Compromiso de Readmisión”. (Disponible del 22 de abril al 10 de mayo de 2024).
 
 - **Paso 2:** Envío de documentos
@@ -38,11 +37,7 @@ Una vez iniciadas las clases en el II PAC-2024, se enviará vía correo la invit
 **Nota Importante:** El estudiante que no cumpla con los pasos 1 y 2 no podrá habilitar su matrícula.
 
 ## Regulaciones
-Tras la matrícula, la Vicerrectoría Académica, a través de la DIPP, pondrá a disposición un sistema para que las Coordinaciones de Carrera y Jefaturas de Departamento puedan visualizar los listados de estudiantes readmitidos.
-
-La Vicerrectoría de Orientación y Asuntos Estudiantiles (VOAE) ofrecerá, en cada período, el Programa de Acompañamiento Psicopedagógico Educativo (PAPE) para los estudiantes readmitidos.
-
-En el Primer Período Académico (I-PAC), los estudiantes podrán matricular hasta 12 UV; a partir del II-PAC, la matrícula se regirá según el Índice Académico de Período (IAP), con un máximo de 16 UV.
+Tras la matrícula, la Vicerrectoría Académica, a través de la DIPP, pondrá a disposición un sistema para que las Coordinaciones de Carrera y Jefaturas de Departamento puedan visualizar los listados de estudiantes readmitidos.La Vicerrectoría de Orientación y Asuntos Estudiantiles (VOAE) ofrecerá, en cada período, el Programa de Acompañamiento Psicopedagógico Educativo (PAPE) para los estudiantes readmitidos.En el Primer Período Académico (I-PAC), los estudiantes podrán matricular hasta 12 UV; a partir del II-PAC, la matrícula se regirá según el Índice Académico de Período (IAP), con un máximo de 16 UV.
 
 El estudiante no podrá presentar observaciones como Reprobado (RPB), Abandonó (ABD) o No se presentó (NSP) en su Historial Académico tras la readmisión.
 

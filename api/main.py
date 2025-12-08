@@ -80,7 +80,7 @@ class HistoryResponse(BaseModel):
 def get_chatbot(session_id: str = "default") -> RAGChatbot:
     """Obtiene o crea una instancia del chatbot para la sesión"""
     if session_id not in chat_sessions:
-        chat_sessions[session_id] = RAGChatbot(max_history=10, llm_provider="groq")
+        chat_sessions[session_id] = RAGChatbot(max_history=10, llm_provider="deepseek")
     return chat_sessions[session_id]
 
 

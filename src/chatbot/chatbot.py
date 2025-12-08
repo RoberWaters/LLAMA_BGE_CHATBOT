@@ -12,7 +12,7 @@ from rag.rag_pipeline import RAGPipeline
 class RAGChatbot:
     """Chatbot con historial de conversación y sistema RAG"""
 
-    def __init__(self, docs_folder: str = "data/docs", max_history: int = 5, llm_provider: str = "groq"):
+    def __init__(self, docs_folder: str = "data/docs", max_history: int = 5, llm_provider: str = "deepseek"):
         """
         Inicializa el chatbot con ChromaDB
 

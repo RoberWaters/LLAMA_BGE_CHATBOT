@@ -79,7 +79,7 @@ El estudiante interesado en optar a un tipo de beca o ayuda financiera, debe de 
 ### Requisitos Específicos para las Becas de Patroncinio Externo
 Los requisitos estarán condicionados a lo que se establezcan en el convenio firmado por la UNAH – instituciones nacionales e internacionales públicas o privadas, personas jurídicas y naturales.
 
-### Requisitos Específicos para Ayuda Financiera por Movilidad Estudiantil
+### Requisitos Específicos para Ayuda Financiera por Movilidad Estudiantil (Transporte y buses Universitario)
 1. Ser estudiante de ingreso regular y estar matriculado en el período académico vigente.
 2. Tener un índice académico de periodo igual o superior al promedio de permanencia, pudiendo realizarse las excepciones pertinentes según sea el caso.
 3. Contar con el visto bueno de la unidad académica que lo promueve.
@@ -91,7 +91,7 @@ Los requisitos estarán condicionados a lo que se establezcan en el convenio fir
 
 ## Pasos para solicitar una beca o ayuda financiera
 1. Ingresar al sitio https://registro.unah.edu.hn/ utilizando su número de cuenta estudiantil y contraseña
-2. Ingrese a la sección de solicitudes
+2. Ingrese al apartado de solicitudes
 3. Seleccione la opción de solicitud de becas
 4. Dar click a nueva solicitud
 5. Complete el formulario de la solicitud
