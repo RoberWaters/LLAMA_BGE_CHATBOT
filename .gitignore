@@ -50,3 +50,6 @@ electron_app/
 
 # Test files
 test.txt
+
+# Claude Code documentation
+CLAUDE.md
