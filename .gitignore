@@ -53,3 +53,6 @@ test.txt
 
 # Claude Code documentation
 CLAUDE.md
+
+# Windows Zone Identifier files
+*:Zone.Identifier
