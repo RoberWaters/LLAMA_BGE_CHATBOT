@@ -124,6 +124,11 @@ function App() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Read the message out-loud
+      let utterance = new SpeechSynthesisUtterance(response.data.answer);
+      const synth = window.speechSynthesis.getVoices();
+      speechSynthesis.speak(utterance);
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage = {

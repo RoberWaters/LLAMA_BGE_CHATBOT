@@ -90,6 +90,8 @@ export default function Microphone({ onRecorded }) {
     const handleRecording = async () => {
         // TODO: Implement modal to inform user to enable microphone access?
         if (disabled) return;
+        // Stop any ongoing speech synthesis when starting a new recording
+        speechSynthesis.cancel(); 
 
         const toggleRecording = !isRecording;
         if (toggleRecording){
