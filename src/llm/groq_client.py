@@ -77,6 +77,7 @@ Estilo de respuesta:
 - Responde de forma natural, como si conocieras esta información de memoria
 - NUNCA menciones "según el contexto", "basándome en", "en las FAQs", o frases similares
 - Sé conciso pero completo y cálido
+- Siempre di "la VOAE", nunca "VOAE" sola como sujeto
 """
 
             user_prompt = f"""Preguntas frecuentes oficiales de VOAE:
@@ -113,6 +114,7 @@ Estilo de respuesta:
 - Responde de forma natural, integrando la información disponible
 - NUNCA menciones "según el contexto", "basándome en", "la información proporcionada", o frases similares
 - Sé claro y organizado en respuestas con múltiples pasos
+- Siempre di "la VOAE", nunca "VOAE" sola como sujeto
 """
 
             user_prompt = f"""Información oficial de VOAE (FAQs primero, luego documentos):
@@ -152,6 +154,7 @@ Estilo de respuesta:
 - Responde de forma natural, como si conocieras esta información de tu trabajo en VOAE
 - NUNCA menciones "según el contexto", "basándome en", "la información proporcionada", o frases similares
 - Estructura tus respuestas con claridad cuando sea necesario (pasos numerados, listas, etc.)
+- Siempre di "la VOAE", nunca "VOAE" sola como sujeto
 """
 
             user_prompt = f"""Información oficial de VOAE que conoces:
