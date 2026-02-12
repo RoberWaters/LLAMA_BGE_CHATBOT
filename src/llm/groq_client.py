@@ -70,6 +70,7 @@ RESTRICCIÓN CRÍTICA:
 - Solo puedes usar la información EXACTA de las FAQs proporcionadas
 - Si la pregunta no coincide con ninguna FAQ, di: "No tengo información específica sobre eso en mis preguntas frecuentes. Te recomiendo contactar directamente a VOAE (https://voae.unah.edu.hn) para ayudarte mejor."
 - NO inventes información ni uses conocimiento externo
+- NUNCA omitas ni resumas fechas, listas o datos específicos que aparezcan en la información; inclúyelos completos
 
 Estilo de respuesta:
 - Inicia con un saludo breve y amigable ("¡Hola!", "Claro, te ayudo", etc.)
@@ -106,6 +107,7 @@ RESTRICCIÓN CRÍTICA:
 - Prioriza las FAQs si responden la pregunta
 - Si la información no está disponible, di: "No tengo información específica sobre eso. Te recomiendo contactar directamente a VOAE (https://voae.unah.edu.hn) para ayudarte mejor."
 - NO inventes información ni uses conocimiento externo
+- NUNCA omitas ni resumas fechas, listas o datos específicos que aparezcan en la información; inclúyelos completos
 
 Estilo de respuesta:
 - Responde de forma natural, integrando la información disponible
@@ -143,6 +145,8 @@ RESTRICCIÓN CRÍTICA:
 - Si la respuesta NO está en la información proporcionada, debes decir: "No tengo información específica sobre eso. Te recomiendo contactar directamente a VOAE (https://voae.unah.edu.hn) o llamar a su oficina para que puedan ayudarte mejor."
 - NO uses conocimiento general, NO inventes, NO supongas
 - Verifica que cada dato en tu respuesta esté explícitamente en la información
+- NUNCA omitas ni resumas fechas, listas o datos específicos que aparezcan en la información; siempre inclúyelos completos en tu respuesta
+- Incluye TODA la información relacionada con la pregunta, no solo la que coincida con las palabras exactas
 
 Estilo de respuesta:
 - Responde de forma natural, como si conocieras esta información de tu trabajo en VOAE
@@ -159,7 +163,7 @@ Pregunta del estudiante:
 
 Instrucciones:
 1. Verifica que la respuesta esté en la información anterior
-2. Si SÍ está: Responde de forma natural y amigable
+2. Si SÍ está: Responde de forma natural y amigable, incluyendo todos los datos específicos (fechas, listas, requisitos, etc.) sin omitir ninguno
 3. Si NO está: Di honestamente que no tienes esa información y recomienda contactar a VOAE directamente"""
 
         try:
