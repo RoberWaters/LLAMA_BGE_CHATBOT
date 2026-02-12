@@ -193,8 +193,8 @@ Ejemplos de uso:
                         help='Muestra las fuentes consultadas')
 
     # Opciones de sistema
-    parser.add_argument('--llm-provider', type=str, default='deepseek', choices=['groq', 'deepseek'],
-                        help='Proveedor de LLM: groq o deepseek (default: deepseek)')
+    parser.add_argument('--llm-provider', type=str, default='groq', choices=['groq', 'deepseek'],
+                        help='Proveedor de LLM: groq o deepseek (default: groq)')
 
     args = parser.parse_args()
 

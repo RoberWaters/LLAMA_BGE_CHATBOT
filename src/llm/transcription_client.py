@@ -34,11 +34,11 @@ class TranscriptionClient:
         # Términos del dominio para guiar a Whisper con la ortografía correcta.
         # El prompt de Whisper espera texto ejemplo, NO notación fonética.
         self._domain_terms = [
-            "VOAE",
-            "Summa Cum Laude",
-            "Magna Cum Laude",
-            "Cum Laude",
-            "UNAH",
+            "VOAE", "UNAH", "UNAH-VS", "VRA", "DIPP", "PAC",
+            "PASEE", "PROCAD", "PROSENE",
+            "CIVU", "PAIE", "PAI-E", "PAPE", "PHUMA",
+            "IAG",
+            "Summa Cum Laude", "Magna Cum Laude", "Cum Laude",
         ]
         self._transcription_prompt = self._build_transcription_prompt()
 

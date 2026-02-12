@@ -107,7 +107,7 @@ def get_chatbot(session_id: str = "default", llm_provider: str = None) -> RAGCha
     """Obtiene o crea una instancia del chatbot para la sesión"""
     # Si no se especifica proveedor, usar el guardado o default
     if llm_provider is None:
-        llm_provider = session_llm_providers.get(session_id, "deepseek")
+        llm_provider = session_llm_providers.get(session_id, "groq")
 
     # Si no existe el chatbot o cambió el proveedor, recrear
     if session_id not in chat_sessions or session_llm_providers.get(session_id) != llm_provider:
@@ -197,7 +197,7 @@ async def get_stats(session_id: str = "default"):
         stats = chatbot.get_stats()
 
         # Obtener el proveedor actual de la sesión
-        current_provider = session_llm_providers.get(session_id, "deepseek")
+        current_provider = session_llm_providers.get(session_id, "groq")
 
         return StatsResponse(
             total_documents=stats["total_documents"],

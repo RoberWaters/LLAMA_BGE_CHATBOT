@@ -91,7 +91,7 @@ class LLMConfig:
     """Configuración de LLMs"""
 
     # Proveedor por defecto (groq, deepseek)
-    DEFAULT_PROVIDER = os.getenv('LLM_PROVIDER', 'deepseek')
+    DEFAULT_PROVIDER = os.getenv('LLM_PROVIDER', 'groq')
 
     # Groq Configuration
     GROQ_API_KEY = os.getenv('GROQ_API_KEY')

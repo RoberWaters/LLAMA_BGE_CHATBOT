@@ -19,15 +19,14 @@ import transcribe from './services/speechToText.mjs';
 
 const API_BASE_URL = 'http://localhost:8000';
 
-// TODO: AGREGAR EFECTO MIENTRAS EL BOT ESTÁ TRANSCRIBIENDO.
-
 function App() {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [stats, setStats] = useState(null);
   const [showStats, setShowStats] = useState(false);
-  const [llmProvider, setLlmProvider] = useState('deepseek'); // 'deepseek' o 'groq'
+  const [llmProvider, setLlmProvider] = useState('groq'); // 'groq' o 'deepseek'
   const [isChangingModel, setIsChangingModel] = useState(false);
   const [audio, setAudio] = useState(null);
   const messagesEndRef = useRef(null);
@@ -50,11 +49,13 @@ function App() {
     fetchStats();
   }, []);
 
-  // Realizar transcripción y envío del mensaje cuando se reciba un grabe un nuevo audio
+  // Realizar transcripción y envío del mensaje cuando se grabe un nuevo audio
   useEffect(() => {
     if (!audio) return;
     const fetchData = async () => {
+      setIsTranscribing(true);
       const transcription = await transcribe(audio);
+      setIsTranscribing(false);
       const text = transcription?.text;
       // There was an error when trying to transcribe the audio, show an error message in the chat
       if (text == null){
@@ -67,9 +68,7 @@ function App() {
         return;
       }
       setInputMessage(text);
-      setTimeout(() => {
-        sendMessageWithText(text);
-      }, 300);
+      sendMessageWithText(text);
     }
     fetchData();
   }, [audio]);
@@ -356,7 +355,7 @@ function App() {
             </div>
           ))}
 
-          {isLoading && (
+          {(isLoading || isTranscribing) && (
             <div className="message assistant">
               <div className="message-content">
                 <div className="assistant-avatar">VOAE</div>
@@ -383,12 +382,12 @@ function App() {
               onKeyPress={handleKeyPress}
               placeholder="Escribe tu pregunta aquí..."
               rows="1"
-              disabled={isLoading}
+              disabled={isLoading || isTranscribing}
             />
             <Microphone onRecorded={setAudio} />
             <button
               onClick={sendMessage}
-              disabled={!inputMessage.trim() || isLoading}
+              disabled={!inputMessage.trim() || isLoading || isTranscribing}
               className="send-button"
             >
               <Send size={20} />
