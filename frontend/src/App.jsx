@@ -125,12 +125,14 @@ function App() {
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Read the message out-loud (strip markdown so TTS doesn't say "asterisco")
+      // Read the message out-loud (strip markdown + lowercase acronyms for TTS)
       const plainText = response.data.answer
         .replace(/\*\*(.*?)\*\*/g, '$1')
         .replace(/\*(.*?)\*/g, '$1')
         .replace(/^#{1,6}\s+/gm, '')
-        .replace(/^[-*]\s+/gm, '');
+        .replace(/^[-*]\s+/gm, '')
+        .replace(/\b(VOAE|UNAH|UNAH-VS|VRA|DIPP|PAC|PASEE|PROCAD|PROSENE|CIVU|PAIE|PAI-E|PAPE|PHUMA|IAG)\b/g,
+          match => match.toLowerCase());
       let utterance = new SpeechSynthesisUtterance(plainText);
       const synth = window.speechSynthesis.getVoices();
       speechSynthesis.speak(utterance);
