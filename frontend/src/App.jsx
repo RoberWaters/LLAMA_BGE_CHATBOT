@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import axios from 'axios';
 import {
   Send,
@@ -124,8 +125,13 @@ function App() {
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Read the message out-loud
-      let utterance = new SpeechSynthesisUtterance(response.data.answer);
+      // Read the message out-loud (strip markdown so TTS doesn't say "asterisco")
+      const plainText = response.data.answer
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\*(.*?)\*/g, '$1')
+        .replace(/^#{1,6}\s+/gm, '')
+        .replace(/^[-*]\s+/gm, '');
+      let utterance = new SpeechSynthesisUtterance(plainText);
       const synth = window.speechSynthesis.getVoices();
       speechSynthesis.speak(utterance);
     } catch (error) {
@@ -313,7 +319,11 @@ function App() {
                   <div className="assistant-avatar">VOAE</div>
                 )}
                 <div className="message-bubble">
-                  <p>{message.content}</p>
+                  {message.role === 'assistant' ? (
+                    <ReactMarkdown>{message.content}</ReactMarkdown>
+                  ) : (
+                    <p>{message.content}</p>
+                  )}
 
                   {/* Match Info */}
                   {message.matchType && (
