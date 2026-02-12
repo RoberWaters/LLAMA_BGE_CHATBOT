@@ -74,7 +74,8 @@ class RAGChatbot:
                 question=user_message,
                 top_k=top_k,
                 temperature=temperature,
-                enable_faq=True
+                enable_faq=True,
+                conversation_history=self.conversation_history[-5:]
             )
         else:
             # Sin RAG, solo conversación con historial

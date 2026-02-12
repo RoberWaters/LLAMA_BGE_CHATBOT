@@ -4,7 +4,7 @@ Módulo para interactuar con la API de DeepSeek
 import os
 import requests
 from dotenv import load_dotenv
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 
 class DeepSeekClient:
@@ -31,7 +31,8 @@ class DeepSeekClient:
         context_documents: List[str],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        context_type: str = "docs_only"
+        context_type: str = "docs_only",
+        conversation_history: Optional[List[Tuple[str, str]]] = None
     ) -> str:
         """
         Genera una respuesta usando el contexto RAG
@@ -42,6 +43,7 @@ class DeepSeekClient:
             temperature: Temperatura para la generación (0-1)
             max_tokens: Máximo de tokens en la respuesta
             context_type: Tipo de contexto - 'faq_only', 'faq_and_docs', 'docs_only'
+            conversation_history: Historial de conversación como lista de tuplas (user_msg, assistant_msg)
 
         Returns:
             Respuesta generada por DeepSeek
@@ -165,13 +167,21 @@ Instrucciones:
 2. Si SÍ está: Responde de forma natural y amigable, incluyendo todos los datos específicos (fechas, listas, requisitos, etc.) sin omitir ninguno
 3. Si NO está: Di honestamente que no tienes esa información y recomienda contactar a VOAE directamente"""
 
+        # Construir mensajes con historial de conversación
+        messages = [{"role": "system", "content": system_prompt}]
+
+        # Inyectar historial como mensajes alternados user/assistant
+        if conversation_history:
+            for hist_user, hist_assistant in conversation_history[-5:]:
+                messages.append({"role": "user", "content": hist_user})
+                messages.append({"role": "assistant", "content": hist_assistant})
+
+        messages.append({"role": "user", "content": user_prompt})
+
         # Preparar el payload
         payload = {
             "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+            "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens
         }

@@ -3,7 +3,7 @@ Módulo para interactuar con la API de Groq (ultra-rápida)
 """
 import os
 from dotenv import load_dotenv
-from typing import List
+from typing import List, Tuple, Optional
 from groq import Groq
 
 
@@ -35,7 +35,8 @@ class GroqClient:
         context_documents: List[str],
         temperature: float = 0.3,
         max_tokens: int = 850,
-        context_type: str = "docs_only"
+        context_type: str = "docs_only",
+        conversation_history: Optional[List[Tuple[str, str]]] = None
     ) -> str:
         """
         Genera una respuesta usando el contexto RAG
@@ -46,6 +47,7 @@ class GroqClient:
             temperature: Temperatura para la generación (0-1)
             max_tokens: Máximo de tokens en la respuesta
             context_type: Tipo de contexto - 'faq_only', 'faq_and_docs', 'docs_only'
+            conversation_history: Historial de conversación como lista de tuplas (user_msg, assistant_msg)
 
         Returns:
             Respuesta generada por Groq
@@ -170,11 +172,19 @@ Instrucciones:
 3. Si NO está: Di honestamente que no tienes esa información y recomienda contactar a VOAE directamente"""
 
         try:
+            # Construir mensajes con historial de conversación
+            messages = [{"role": "system", "content": system_prompt}]
+
+            # Inyectar historial como mensajes alternados user/assistant
+            if conversation_history:
+                for hist_user, hist_assistant in conversation_history[-5:]:
+                    messages.append({"role": "user", "content": hist_user})
+                    messages.append({"role": "assistant", "content": hist_assistant})
+
+            messages.append({"role": "user", "content": user_prompt})
+
             chat_completion = self.client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
+                messages=messages,
                 model=self.model,
                 temperature=temperature,
                 max_tokens=max_tokens

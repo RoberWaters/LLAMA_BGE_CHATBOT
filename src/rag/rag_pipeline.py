@@ -113,10 +113,11 @@ class RAGPipeline:
         top_k: int = 3,
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        enable_faq: bool = True
+        enable_faq: bool = True,
+        conversation_history: list = None
     ) -> dict:
         """
-        Realiza una consulta con sistema FAQ híbrido (umbrales 90%/80%)
+        Realiza una consulta con sistema FAQ híbrido (umbrales 75%/65%)
 
         Args:
             question: Pregunta del usuario
@@ -124,6 +125,7 @@ class RAGPipeline:
             temperature: Temperatura base (se ajusta según contexto)
             max_tokens: Máximo de tokens en la respuesta
             enable_faq: Si es True, busca en FAQs primero
+            conversation_history: Historial de conversación como lista de tuplas (user_msg, assistant_msg)
 
         Returns:
             Diccionario con la respuesta, metadatos y tipo de match
@@ -132,6 +134,15 @@ class RAGPipeline:
         print("PROCESANDO CONSULTA CON SISTEMA FAQ HÍBRIDO")
         print("=" * 60)
         print(f"Pregunta: {question}\n")
+
+        # Enriquecer la query con contexto del historial para mejorar la búsqueda semántica
+        # Esto permite que preguntas de seguimiento como "¿En qué horario puedo ir?"
+        # se busquen con el contexto de la conversación anterior
+        search_query = question
+        if conversation_history:
+            last_user_msg = conversation_history[-1][0]
+            search_query = f"{last_user_msg} {question}"
+            print(f"Query enriquecida para búsqueda: {search_query}\n")
 
         # Verificar que haya documentos
         doc_count = self.repository.count_documents()
@@ -148,7 +159,7 @@ class RAGPipeline:
         # PASO 1: Clasificar la consulta según FAQs
         if enable_faq and self.faq_handler.should_use_faq(question):
             print("\n🔍 Buscando en FAQs...")
-            faq_classification = self.faq_handler.classify_query(question, top_k=5)
+            faq_classification = self.faq_handler.classify_query(search_query, top_k=5)
             match_type = faq_classification['match_type']
             faq_results = faq_classification['faq_results']
             best_similarity = faq_classification['best_similarity']
@@ -166,7 +177,7 @@ class RAGPipeline:
         if match_type in ['medium', 'low']:
             print(f"\n📄 Buscando en documentos generales (top-{top_k})...")
             all_docs = self.retriever.retrieve_relevant_documents(
-                query=question,
+                query=search_query,
                 top_k=top_k * 2  # Buscar más para compensar filtrado
             )
 
@@ -210,7 +221,8 @@ class RAGPipeline:
                 context_documents=context_documents,
                 temperature=adjusted_temperature,
                 max_tokens=max_tokens,
-                context_type=context_type
+                context_type=context_type,
+                conversation_history=conversation_history
             )
 
             print("=" * 60)

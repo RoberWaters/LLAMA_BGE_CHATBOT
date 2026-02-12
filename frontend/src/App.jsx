@@ -93,6 +93,7 @@ function App() {
 
   const sendMessageWithText = async (message) => {
     if (!message.trim() || isLoading) return;
+    speechSynthesis.cancel();
 
     const userMessage = {
       role: 'user',
