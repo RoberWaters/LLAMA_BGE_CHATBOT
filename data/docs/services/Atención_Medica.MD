@@ -143,5 +143,5 @@ areadesalud.boi@unah.edu.hn
 
 	juan.santos@unah.edu.hn
 
-**Ubicación:** Todas las citas y atenciones se gestionan presencialmente en el Archivo del Área de Salud, edificio de la VOAE, Ciudad Universitaria.
+**Ubicación:** Todas las citas y atenciones se gestionan presencialmente en el Archivo del Área de Salud, edificio J1, Ciudad Universitaria.
 

@@ -14,9 +14,11 @@ import './App.css';
 
 // Components
 import Microphone from './components/Microphone.jsx';
+import TalkingHeadAvatar from './components/TalkingHeadAvatar.jsx';
 
-// Services 
+// Services
 import transcribe from './services/speechToText.mjs';
+import { preprocessTextForTTS, synthesize } from './services/textToSpeech.mjs';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -30,17 +32,16 @@ function App() {
   const [llmProvider, setLlmProvider] = useState('groq'); // 'groq' o 'deepseek'
   const [isChangingModel, setIsChangingModel] = useState(false);
   const [audio, setAudio] = useState(null);
+  const [isSynthesizing, setIsSynthesizing] = useState(false);
   const messagesEndRef = useRef(null);
   const sessionId = useRef(`session-${Date.now()}`);
+  const avatarRef = useRef(null);
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  useEffect(() => {
-    console.log("Input: ", inputMessage);
-  })
+  
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -93,7 +94,10 @@ function App() {
 
   const sendMessageWithText = async (message) => {
     if (!message.trim() || isLoading) return;
-    speechSynthesis.cancel();
+    avatarRef.current?.stop();
+    // Desbloquear AudioContext sincrónicamente desde el gesto del usuario
+    // antes de entrar en la cadena async (API call + synthesis)
+    avatarRef.current?.initAudio();
 
     const userMessage = {
       role: 'user',
@@ -126,17 +130,17 @@ function App() {
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Read the message out-loud (strip markdown + lowercase acronyms for TTS)
-      const plainText = response.data.answer
-        .replace(/\*\*(.*?)\*\*/g, '$1')
-        .replace(/\*(.*?)\*/g, '$1')
-        .replace(/^#{1,6}\s+/gm, '')
-        .replace(/^[-*]\s+/gm, '')
-        .replace(/\b(VOAE|UNAH|UNAH-VS|VRA|DIPP|PAC|PASEE|PROCAD|PROSENE|CIVU|PAIE|PAI-E|PAPE|PHUMA|IAG)\b/g,
-          match => match.toLowerCase());
-      let utterance = new SpeechSynthesisUtterance(plainText);
-      const synth = window.speechSynthesis.getVoices();
-      speechSynthesis.speak(utterance);
+      // Sintetizar voz con Amazon Polly + avatar 3D (fire-and-forget, no bloquea)
+      const plainText = preprocessTextForTTS(response.data.answer);
+      setIsSynthesizing(true);
+      synthesize(plainText).then((data) => {
+        setIsSynthesizing(false);
+        if (data && avatarRef.current) {
+          avatarRef.current.speak(data);
+        }
+      }).catch(() => {
+        setIsSynthesizing(false);
+      });
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage = {
@@ -219,8 +223,17 @@ function App() {
     }
   };
 
+  const handleStopAvatar = () => {
+    avatarRef.current?.stop();
+    // También desbloquear AudioContext cuando el usuario activa el micrófono
+    avatarRef.current?.initAudio();
+  };
+
   return (
     <div className="app-container">
+      <div className="avatar-panel">
+        <TalkingHeadAvatar ref={avatarRef} />
+      </div>
       <div className="chat-container">
         {/* Header */}
         <div className="chat-header">
@@ -397,7 +410,7 @@ function App() {
               rows="1"
               disabled={isLoading || isTranscribing}
             />
-            <Microphone onRecorded={setAudio} />
+            <Microphone onRecorded={setAudio} onStartRecording={handleStopAvatar} />
             <button
               onClick={sendMessage}
               disabled={!inputMessage.trim() || isLoading || isTranscribing}

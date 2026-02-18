@@ -15,6 +15,8 @@ sys.path.insert(0, str(BASE_DIR))
 os.chdir(BASE_DIR)
 
 
+import base64
+
 from fastapi import FastAPI, HTTPException, UploadFile, File
 
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,6 +28,7 @@ from datetime import datetime
 from chatbot.chatbot import RAGChatbot
 
 from llm.transcription_client import TranscriptionClient
+from llm.polly_client import PollyClient
 
 # Inicializar FastAPI
 app = FastAPI(
@@ -57,6 +60,16 @@ def get_transcription_client():
     if transcription_client is None:
         transcription_client = TranscriptionClient()
     return transcription_client
+
+
+polly_client = None
+
+def get_polly_client():
+    """Obtiene o crea el cliente de Amazon Polly"""
+    global polly_client
+    if polly_client is None:
+        polly_client = PollyClient()
+    return polly_client
 
 
 # Modelos Pydantic
@@ -100,6 +113,20 @@ class ModelChangeRequest(BaseModel):
 class TranscriptionResponse(BaseModel):
     text: Optional[str] = None
     timestamp: str
+
+
+class SynthesizeRequest(BaseModel):
+    text: str
+
+
+class SynthesizeResponse(BaseModel):
+    audio: str  # base64-encoded MP3
+    words: List[str]
+    wtimes: List[int]
+    wdurations: List[int]
+    visemes: List[str]  # Oculus viseme names (e.g. 'PP', 'aa', 'sil')
+    vtimes: List[int]
+    vdurations: List[int]
 
 
 # Funciones auxiliares
@@ -353,6 +380,46 @@ async def transcribe_audio(audio: UploadFile = File(...), language: str = "es"):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al transcribir audio: {str(e)}")
+
+
+@app.post("/synthesize", response_model=SynthesizeResponse)
+async def synthesize_speech(request: SynthesizeRequest):
+    """
+    Sintetiza texto a voz usando Amazon Polly con datos de visemas para lip-sync
+
+    Args:
+        request: SynthesizeRequest con el texto a sintetizar
+
+    Returns:
+        SynthesizeResponse con audio base64 y datos de timing
+    """
+    try:
+        if not request.text or not request.text.strip():
+            raise HTTPException(status_code=400, detail="El texto no puede estar vacío")
+
+        # Truncar texto al límite de Polly
+        text = request.text[:3000]
+
+        client = get_polly_client()
+        result = client.synthesize(text)
+
+        # Codificar audio a base64
+        audio_base64 = base64.b64encode(result['audio_bytes']).decode('utf-8')
+
+        return SynthesizeResponse(
+            audio=audio_base64,
+            words=result['words'],
+            wtimes=result['wtimes'],
+            wdurations=result['wdurations'],
+            visemes=result['visemes'],
+            vtimes=result['vtimes'],
+            vdurations=result['vdurations']
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al sintetizar voz: {str(e)}")
 
 
 @app.post("/change-model")

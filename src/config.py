@@ -150,6 +150,23 @@ class ChatbotConfig:
 # API Configuration
 # =============================================================================
 
+class PollyConfig:
+    """Configuración de Amazon Polly TTS"""
+
+    # Credenciales AWS
+    AWS_ACCESS_KEY = os.getenv('AWS_ACCES_KEY')  # Nota: typo intencional para compatibilidad con .env existente
+    AWS_SECRET_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+    AWS_REGION = os.getenv('AWS_REGION', 'us-east-1')
+
+    # Configuración de voz
+    VOICE_ID = os.getenv('POLLY_VOICE_ID', 'Lupe')
+    LANGUAGE_CODE = os.getenv('POLLY_LANGUAGE_CODE', 'es-US')
+    ENGINE = os.getenv('POLLY_ENGINE', 'neural')
+
+    # Límite de texto
+    MAX_TEXT_LENGTH = int(os.getenv('POLLY_MAX_TEXT_LENGTH', '3000'))
+
+
 class APIConfig:
     """Configuración de la API FastAPI"""
 
@@ -206,6 +223,13 @@ def get_config_summary() -> dict:
         'chatbot': {
             'max_history': ChatbotConfig.MAX_HISTORY,
             'enable_faq': ChatbotConfig.ENABLE_FAQ,
+        },
+        'polly': {
+            'voice_id': PollyConfig.VOICE_ID,
+            'language_code': PollyConfig.LANGUAGE_CODE,
+            'engine': PollyConfig.ENGINE,
+            'region': PollyConfig.AWS_REGION,
+            'configured': bool(PollyConfig.AWS_ACCESS_KEY and PollyConfig.AWS_SECRET_KEY),
         }
     }
 
@@ -234,6 +258,16 @@ def validate_config():
 
     if errors:
         raise ValueError(f"Errores de configuración:\n" + "\n".join(f"- {e}" for e in errors))
+
+    # Advertencias opcionales (no bloquean)
+    warnings = []
+    if not PollyConfig.AWS_ACCESS_KEY or not PollyConfig.AWS_SECRET_KEY:
+        warnings.append("AWS_ACCES_KEY o AWS_SECRET_ACCESS_KEY no configuradas - TTS con Amazon Polly no estará disponible")
+
+    if warnings:
+        import sys
+        for w in warnings:
+            print(f"⚠ Advertencia: {w}", file=sys.stderr)
 
     return True
 

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import '../App.css';
 
-export default function Microphone({ onRecorded }) {
+export default function Microphone({ onRecorded, onStartRecording }) {
     // TODO: CLEAN CODE METHODS. SEPARATE CONCERNS FOR BETTER READABILITY
     // TODO: Implement comm with LLM for audio transcription
     const [disabled, setDisabled] = useState(true);
@@ -90,8 +90,8 @@ export default function Microphone({ onRecorded }) {
     const handleRecording = async () => {
         // TODO: Implement modal to inform user to enable microphone access?
         if (disabled) return;
-        // Stop any ongoing speech synthesis when starting a new recording
-        speechSynthesis.cancel(); 
+        // Stop any ongoing speech/avatar when starting a new recording
+        if (onStartRecording) onStartRecording();
 
         const toggleRecording = !isRecording;
         if (toggleRecording){
