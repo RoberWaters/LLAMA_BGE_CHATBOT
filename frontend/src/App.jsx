@@ -15,8 +15,9 @@ import './App.css';
 // Components
 import Microphone from './components/Microphone.jsx';
 
-// Services 
+// Services
 import transcribe from './services/speechToText.mjs';
+import synthesize from './services/textToSpeech.mjs';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -32,6 +33,7 @@ function App() {
   const [audio, setAudio] = useState(null);
   const messagesEndRef = useRef(null);
   const sessionId = useRef(`session-${Date.now()}`);
+  const audioRef = useRef(null);
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -93,7 +95,10 @@ function App() {
 
   const sendMessageWithText = async (message) => {
     if (!message.trim() || isLoading) return;
-    speechSynthesis.cancel();
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
 
     const userMessage = {
       role: 'user',
@@ -126,7 +131,7 @@ function App() {
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Read the message out-loud (strip markdown + lowercase acronyms for TTS)
+      // Sintetizar con Amazon Polly (strip markdown + lowercase acronyms)
       const plainText = response.data.answer
         .replace(/\*\*(.*?)\*\*/g, '$1')
         .replace(/\*(.*?)\*/g, '$1')
@@ -134,9 +139,13 @@ function App() {
         .replace(/^[-*]\s+/gm, '')
         .replace(/\b(VOAE|UNAH|UNAH-VS|VRA|DIPP|PAC|PASEE|PROCAD|PROSENE|CIVU|PAIE|PAI-E|PAPE|PHUMA|IAG)\b/g,
           match => match.toLowerCase());
-      let utterance = new SpeechSynthesisUtterance(plainText);
-      const synth = window.speechSynthesis.getVoices();
-      speechSynthesis.speak(utterance);
+
+      const ttsData = await synthesize(plainText);
+      if (ttsData?.audio_base64) {
+        const audio = new Audio(`data:audio/mp3;base64,${ttsData.audio_base64}`);
+        audioRef.current = audio;
+        audio.play();
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       const errorMessage = {

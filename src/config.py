@@ -168,6 +168,20 @@ class APIConfig:
 
 
 # =============================================================================
+# Amazon Polly TTS Configuration
+# =============================================================================
+
+class PollyConfig:
+    """Configuración de Amazon Polly TTS"""
+    AWS_ACCESS_KEY = os.getenv('AWS_ACCES_KEY')        # Typo intencional para compatibilidad
+    AWS_SECRET_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+    AWS_REGION     = os.getenv('AWS_REGION', 'us-east-1')
+    VOICE_ID       = os.getenv('POLLY_VOICE', 'Lupe')
+    ENGINE         = os.getenv('POLLY_ENGINE', 'neural')
+    LANGUAGE_CODE  = os.getenv('POLLY_LANGUAGE', 'es-US')
+
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 

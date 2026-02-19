@@ -26,6 +26,7 @@ from datetime import datetime
 from chatbot.chatbot import RAGChatbot
 
 from llm.transcription_client import TranscriptionClient
+from llm.polly_client import PollyClient
 
 # Inicializar FastAPI
 app = FastAPI(
@@ -57,6 +58,16 @@ def get_transcription_client():
     if transcription_client is None:
         transcription_client = TranscriptionClient()
     return transcription_client
+
+
+polly_client = None
+
+def get_polly_client():
+    """Obtiene o crea el cliente de Amazon Polly"""
+    global polly_client
+    if polly_client is None:
+        polly_client = PollyClient()
+    return polly_client
 
 
 # Modelos Pydantic
@@ -99,6 +110,14 @@ class ModelChangeRequest(BaseModel):
 
 class TranscriptionResponse(BaseModel):
     text: Optional[str] = None
+    timestamp: str
+
+
+class SynthesizeRequest(BaseModel):
+    text: str
+
+class SynthesizeResponse(BaseModel):
+    audio_base64: str
     timestamp: str
 
 
@@ -353,6 +372,20 @@ async def transcribe_audio(audio: UploadFile = File(...), language: str = "es"):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al transcribir audio: {str(e)}")
+
+
+@app.post("/synthesize", response_model=SynthesizeResponse)
+async def synthesize_speech(request: SynthesizeRequest):
+    """Sintetiza texto a audio MP3 usando Amazon Polly"""
+    try:
+        client = get_polly_client()
+        audio_base64 = client.synthesize(request.text)
+        return SynthesizeResponse(
+            audio_base64=audio_base64,
+            timestamp=datetime.now().isoformat()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al sintetizar audio: {str(e)}")
 
 
 @app.post("/change-model")
