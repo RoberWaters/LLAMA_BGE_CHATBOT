@@ -1,121 +1,87 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  Mic,
-  MicOff
-} from 'lucide-react';
+import { Mic, MicOff } from 'lucide-react';
 import '../App.css';
 
-export default function Microphone({ onRecorded }) {
-    // TODO: CLEAN CODE METHODS. SEPARATE CONCERNS FOR BETTER READABILITY
-    // TODO: Implement comm with LLM for audio transcription
+export default function Microphone({ onRecorded, onRecordStart }) {
     const [disabled, setDisabled] = useState(true);
     const [isRecording, setIsRecording] = useState(false);
-    let audioChunks = useRef([]);
-    let mediaRecorder = useRef(null);
-    let speechRecognition = useRef(null);
+    const mediaRecorder = useRef(null);
     const audioMimeType = 'audio/webm';
-    
-    // Media Recorder setup
-    useEffect(() => {
-        // Ask for microphone access on component mount
-        navigator.mediaDevices.getUserMedia({ 
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-            } 
-        })
-        .then((stream) => {
-            // Configure and set the MediaRecorder object
-            const options = {mimeType: `${audioMimeType};codecs=opus`};
-            mediaRecorder.current = new MediaRecorder(stream, options); 
-            
-            // Handle Recording logic. Add chunks when available
-            mediaRecorder.current.ondataavailable = (event) => {
-                audioChunks.current = [...audioChunks.current, event.data];
-            };
 
-            // Handle Stop logic
-            mediaRecorder.current.onstop = (event) => {
-                const blob = new Blob(audioChunks.current, { type: audioMimeType });
-                // Clear audio chunks for the next recording
-                audioChunks.current = [];
-                // Pass the recorded audio to the parent component
-                onRecorded(blob);
-            }
-            
-            // Enable the microphone button if access was granted
-            setDisabled(false);
-            }
-        )
-        .catch((err) => {
-            // Disable the microphone button if access was denied
-            console.error("Microphone access denied:", err);
-            setDisabled(true);
-        });
+    // Solo pide permiso del micrófono al montar para habilitar el botón.
+    // El stream real se obtiene fresco en cada grabación.
+    useEffect(() => {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then((stream) => {
+                stream.getTracks().forEach(t => t.stop()); // liberar inmediatamente
+                setDisabled(false);
+            })
+            .catch(() => setDisabled(true));
     }, []);
 
-    // Listen for microphone permission changes
+    // Escuchar cambios de permiso
     useEffect(() => {
-        const addMicPermissionListener = async () => {
-            navigator.permissions.query({ name: 'microphone' })
-                .then((permissionStatus) => {
-                    permissionStatus.onchange = () => {
-                        if (permissionStatus.state === 'granted') {
-                            setDisabled(false);
-                        } else {
-                            setDisabled(true);
-                        }
-                    };
-                });
-        };
-        addMicPermissionListener();
-    }, [])
-
-    // Init Speech Recognition service. SR is used to stop recording when user stops speaking
-    useEffect(() => {
-        const SpeechRecognition = (window.SpeechRecognition || window.webkitSpeechRecognition);
-        if (typeof SpeechRecognition === "undefined") {
-            console.error("Speech Recognition API not supported in this browser.");
-            return;
-        }
-        speechRecognition.current = new SpeechRecognition();
-        speechRecognition.current.lang = "es-ES";
-        speechRecognition.current.onspeechend = () => {
-            speechRecognition.current.stop();
-            mediaRecorder.current.stop();
-            setIsRecording(false);
-        }
+        navigator.permissions.query({ name: 'microphone' })
+            .then((status) => {
+                status.onchange = () => setDisabled(status.state !== 'granted');
+            })
+            .catch(() => {});
     }, []);
 
     const handleRecording = async () => {
-        // TODO: Implement modal to inform user to enable microphone access?
         if (disabled) return;
-        // Stop any ongoing speech synthesis when starting a new recording
-        speechSynthesis.cancel(); 
 
-        const toggleRecording = !isRecording;
-        if (toggleRecording){
-            // Start recording
-            mediaRecorder.current.start(1000);
-            // Start recongnition service to stop when user stops speaking
-            if (speechRecognition.current)
-                speechRecognition.current?.start();
-            console.log("Recording started");
-        } else{
-            // Stop recording
-            mediaRecorder.current.stop();
-            console.log("Recording stopped");
+        if (!isRecording) {
+            // ── Iniciar grabación ──────────────────────────────────────────
+            speechSynthesis.cancel();
+            onRecordStart?.();
+
+            try {
+                // Stream fresco: se crea DESPUÉS de que Simli/WebRTC ya está activo,
+                // así Chrome lo inicializa en el contexto de audio correcto.
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
+                });
+
+                const recorder = new MediaRecorder(stream, {
+                    mimeType: `${audioMimeType};codecs=opus`,
+                });
+                const chunks = [];
+
+                recorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) chunks.push(e.data);
+                };
+
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: audioMimeType });
+                    stream.getTracks().forEach(t => t.stop()); // liberar micrófono
+                    onRecorded(blob);
+                };
+
+                mediaRecorder.current = recorder;
+                recorder.start(); // sin timeslice: un solo blob limpio al parar
+
+                setIsRecording(true);
+            } catch (err) {
+                console.error('[Mic] Error al acceder al micrófono:', err);
+                setDisabled(true);
+            }
+        } else {
+            // ── Detener grabación ─────────────────────────────────────────
+            mediaRecorder.current?.stop();
+            setIsRecording(false);
         }
-        setIsRecording(toggleRecording);
-    }
+    };
 
     return (
         <button
             disabled={disabled}
             className={`mic-button ${isRecording ? 'recording' : ''}`}
-            onClick={() => {
-                handleRecording();
-            }}
+            onClick={handleRecording}
         >
             {disabled ? <MicOff /> : <Mic />}
         </button>

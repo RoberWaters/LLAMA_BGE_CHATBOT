@@ -27,6 +27,7 @@ from chatbot.chatbot import RAGChatbot
 
 from llm.transcription_client import TranscriptionClient
 from llm.polly_client import PollyClient
+from config import SimliConfig
 
 # Inicializar FastAPI
 app = FastAPI(
@@ -433,6 +434,23 @@ async def change_model(request: ModelChangeRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al cambiar modelo: {str(e)}")
+
+
+@app.get("/simli/config")
+async def get_simli_config():
+    """
+    Retorna la configuración pública de Simli para inicializar el cliente WebRTC
+    en el frontend (apiKey + faceId).
+    """
+    if not SimliConfig.API_KEY or not SimliConfig.FACE_ID:
+        raise HTTPException(
+            status_code=503,
+            detail="SIMLI_API o FACE_ID_SIMLI no están configurados en el servidor"
+        )
+    return {
+        "apiKey": SimliConfig.API_KEY,
+        "faceId": SimliConfig.FACE_ID,
+    }
 
 
 if __name__ == "__main__":

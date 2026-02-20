@@ -14,12 +14,43 @@ import './App.css';
 
 // Components
 import Microphone from './components/Microphone.jsx';
+import SimliAvatar from './components/SimliAvatar.jsx';
 
 // Services
 import transcribe from './services/speechToText.mjs';
 import synthesize from './services/textToSpeech.mjs';
 
 const API_BASE_URL = 'http://localhost:8000';
+
+/**
+ * Decodifica audio MP3 (base64) → PCM16 Uint8Array a 16 kHz.
+ * Simli requiere PCM16 mono a 16 000 Hz.
+ */
+async function decodeMP3ToPCM16(base64mp3) {
+  // 1. base64 → ArrayBuffer
+  const binaryStr = atob(base64mp3);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i);
+  }
+
+  // 2. Decodificar MP3 con AudioContext forzado a 16 kHz (remuestrea automáticamente)
+  const audioCtx = new AudioContext({ sampleRate: 16000 });
+  const audioBuffer = await audioCtx.decodeAudioData(bytes.buffer);
+  await audioCtx.close();
+
+  // 3. Canal 0 (mono) como Float32
+  const channelData = audioBuffer.getChannelData(0);
+
+  // 4. Float32 → Int16 (PCM16 LE)
+  const pcm16 = new Int16Array(channelData.length);
+  for (let i = 0; i < channelData.length; i++) {
+    const s = Math.max(-1, Math.min(1, channelData[i]));
+    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+
+  return new Uint8Array(pcm16.buffer);
+}
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -28,31 +59,31 @@ function App() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [stats, setStats] = useState(null);
   const [showStats, setShowStats] = useState(false);
-  const [llmProvider, setLlmProvider] = useState('groq'); // 'groq' o 'deepseek'
+  const [llmProvider, setLlmProvider] = useState('groq');
   const [isChangingModel, setIsChangingModel] = useState(false);
   const [audio, setAudio] = useState(null);
+
+  // Simli
+  const [simliConfig, setSimliConfig] = useState(null); // { apiKey, faceId }
+  const simliRef = useRef(null);
+
   const messagesEndRef = useRef(null);
   const sessionId = useRef(`session-${Date.now()}`);
-  const audioRef = useRef(null);
+  const audioRef = useRef(null); // Fallback: reproducción directa sin Simli
 
-  // Auto-scroll to bottom
+  // Auto-scroll al último mensaje
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(() => {
-    console.log("Input: ", inputMessage);
-  })
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  useEffect(() => { scrollToBottom(); }, [messages]);
 
-  // Cargar estadísticas al iniciar
   useEffect(() => {
     fetchStats();
+    fetchSimliConfig();
   }, []);
 
-  // Realizar transcripción y envío del mensaje cuando se grabe un nuevo audio
+  // Transcribir y enviar cuando se grabe audio
   useEffect(() => {
     if (!audio) return;
     const fetchData = async () => {
@@ -60,8 +91,7 @@ function App() {
       const transcription = await transcribe(audio);
       setIsTranscribing(false);
       const text = transcription?.text;
-      // There was an error when trying to transcribe the audio, show an error message in the chat
-      if (text == null){
+      if (text == null) {
         const errorMessage = {
           role: 'error',
           content: 'Lo siento, no pude entenderte en este momento. Por favor intenta de nuevo o escribe tu pregunta.',
@@ -72,7 +102,7 @@ function App() {
       }
       setInputMessage(text);
       sendMessageWithText(text);
-    }
+    };
     fetchData();
   }, [audio]);
 
@@ -80,7 +110,6 @@ function App() {
     try {
       const response = await axios.get(`${API_BASE_URL}/stats?session_id=${sessionId.current}`);
       setStats(response.data);
-      // Actualizar el proveedor actual desde las estadísticas
       if (response.data.llm_provider) {
         setLlmProvider(response.data.llm_provider);
       }
@@ -89,16 +118,28 @@ function App() {
     }
   };
 
+  const fetchSimliConfig = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/simli/config`);
+      setSimliConfig(response.data); // { apiKey, faceId }
+    } catch (error) {
+      console.warn('[Simli] Config no disponible, avatar desactivado:', error.message);
+    }
+  };
+
   const sendMessage = async () => {
     await sendMessageWithText(inputMessage);
-  }
+  };
 
   const sendMessageWithText = async (message) => {
     if (!message.trim() || isLoading) return;
+
+    // Detener audio previo (Polly directo o Simli)
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
+    simliRef.current?.clearBuffer();
 
     const userMessage = {
       role: 'user',
@@ -112,11 +153,11 @@ function App() {
 
     try {
       const response = await axios.post(`${API_BASE_URL}/chat`, {
-        message: message,
+        message,
         session_id: sessionId.current,
         top_k: 4,
         temperature: 0.7,
-        llm_provider: llmProvider  // Enviar proveedor actual
+        llm_provider: llmProvider
       });
 
       const assistantMessage = {
@@ -131,7 +172,7 @@ function App() {
 
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Sintetizar con Amazon Polly (strip markdown + lowercase acronyms)
+      // Preprocesar texto para TTS (quitar markdown, bajar siglas)
       const plainText = response.data.answer
         .replace(/\*\*(.*?)\*\*/g, '$1')
         .replace(/\*(.*?)\*/g, '$1')
@@ -140,11 +181,23 @@ function App() {
         .replace(/\b(VOAE|UNAH|UNAH-VS|VRA|DIPP|PAC|PASEE|PROCAD|PROSENE|CIVU|PAIE|PAI-E|PAPE|PHUMA|IAG)\b/g,
           match => match.toLowerCase());
 
+      // Síntesis de voz con Amazon Polly
       const ttsData = await synthesize(plainText);
+
       if (ttsData?.audio_base64) {
-        const audio = new Audio(`data:audio/mp3;base64,${ttsData.audio_base64}`);
-        audioRef.current = audio;
-        audio.play();
+        // Desilenciar antes de reproducir (puede estar silenciado por la grabación)
+        simliRef.current?.muteOutput(false);
+
+        if (simliRef.current?.isConnected()) {
+          // Enviar PCM16 al avatar Simli para habla sincronizada con el rostro
+          const pcmData = await decodeMP3ToPCM16(ttsData.audio_base64);
+          simliRef.current.sendAudio(pcmData);
+        } else {
+          // Fallback: reproducir MP3 directamente en el navegador
+          const fallbackAudio = new Audio(`data:audio/mp3;base64,${ttsData.audio_base64}`);
+          audioRef.current = fallbackAudio;
+          fallbackAudio.play();
+        }
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -170,25 +223,19 @@ function App() {
 
   const changeModel = async (newProvider) => {
     if (isChangingModel || isLoading) return;
-
     setIsChangingModel(true);
     try {
-      const response = await axios.post(`${API_BASE_URL}/change-model`, {
+      await axios.post(`${API_BASE_URL}/change-model`, {
         session_id: sessionId.current,
         llm_provider: newProvider
       });
-
       setLlmProvider(newProvider);
-
-      // Mensaje de confirmación en el chat
       const confirmationMessage = {
         role: 'system',
         content: `Modelo cambiado a ${newProvider === 'groq' ? 'Groq (Llama 3.3 70B)' : 'DeepSeek'}. El historial se mantiene.`,
         timestamp: new Date().toLocaleTimeString()
       };
       setMessages(prev => [...prev, confirmationMessage]);
-
-      // Actualizar estadísticas
       await fetchStats();
     } catch (error) {
       console.error('Error changing model:', error);
@@ -211,27 +258,42 @@ function App() {
   };
 
   const getMatchIcon = (matchType) => {
-    switch(matchType) {
-      case 'high': return <CheckCircle size={16} className="match-icon high" />;
+    switch (matchType) {
+      case 'high':   return <CheckCircle size={16} className="match-icon high" />;
       case 'medium': return <AlertCircle size={16} className="match-icon medium" />;
-      case 'low': return <FileText size={16} className="match-icon low" />;
-      default: return null;
+      case 'low':    return <FileText     size={16} className="match-icon low" />;
+      default:       return null;
     }
   };
 
   const getMatchLabel = (matchType) => {
-    switch(matchType) {
-      case 'high': return 'FAQ Exacto';
+    switch (matchType) {
+      case 'high':   return 'FAQ Exacto';
       case 'medium': return 'FAQ + Docs';
-      case 'low': return 'Documentos';
-      default: return '';
+      case 'low':    return 'Documentos';
+      default:       return '';
     }
   };
 
   return (
     <div className="app-container">
-      <div className="chat-container">
-        {/* Header */}
+      <div className={`chat-container${simliConfig ? ' chat-container--with-avatar' : ''}`}>
+
+        {/* ── Panel izquierdo: Avatar Simli ── */}
+        {simliConfig && (
+          <div className="simli-panel">
+            <SimliAvatar
+              ref={simliRef}
+              apiKey={simliConfig.apiKey}
+              faceId={simliConfig.faceId}
+            />
+          </div>
+        )}
+
+        {/* ── Columna derecha: chat completo ── */}
+        <div className="chat-right">
+
+        {/* ── Header ── */}
         <div className="chat-header">
           <div className="header-content">
             <div className="header-title">
@@ -246,7 +308,6 @@ function App() {
               </div>
             </div>
             <div className="header-actions">
-              {/* Selector de Modelo */}
               <div className="model-selector">
                 <select
                   value={llmProvider}
@@ -259,7 +320,6 @@ function App() {
                   <option value="groq">Groq (Llama 3.3 70B)</option>
                 </select>
               </div>
-
               <button
                 className="icon-button"
                 onClick={() => setShowStats(!showStats)}
@@ -277,7 +337,6 @@ function App() {
             </div>
           </div>
 
-          {/* Stats Panel */}
           {showStats && stats && (
             <div className="stats-panel">
               <div className="stat-item">
@@ -300,7 +359,7 @@ function App() {
           )}
         </div>
 
-        {/* Messages */}
+        {/* ── Mensajes ── */}
         <div className="messages-container">
           {messages.length === 0 && (
             <div className="welcome-message">
@@ -337,7 +396,6 @@ function App() {
                     <p>{message.content}</p>
                   )}
 
-                  {/* Match Info */}
                   {message.matchType && (
                     <div className="match-info">
                       {getMatchIcon(message.matchType)}
@@ -350,7 +408,6 @@ function App() {
                     </div>
                   )}
 
-                  {/* Sources */}
                   {message.sources && message.sources.length > 0 && (
                     <div className="sources">
                       <p className="sources-title">Fuentes:</p>
@@ -395,7 +452,7 @@ function App() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input */}
+        {/* ── Input ── */}
         <div className="input-container">
           <div className="input-wrapper">
             <textarea
@@ -406,7 +463,19 @@ function App() {
               rows="1"
               disabled={isLoading || isTranscribing}
             />
-            <Microphone onRecorded={setAudio} />
+            <Microphone
+              onRecorded={setAudio}
+              onRecordStart={() => {
+                if (audioRef.current) {
+                  audioRef.current.pause();
+                  audioRef.current = null;
+                }
+                simliRef.current?.clearBuffer();
+                // Silenciar el audio del avatar para que SpeechRecognition
+                // no lo detecte como habla y corte la grabación prematuramente
+                simliRef.current?.muteOutput(true);
+              }}
+            />
             <button
               onClick={sendMessage}
               disabled={!inputMessage.trim() || isLoading || isTranscribing}
@@ -419,6 +488,8 @@ function App() {
             Presiona Enter para enviar, Shift+Enter para nueva línea
           </p>
         </div>
+
+        </div>{/* /chat-right */}
       </div>
     </div>
   );
