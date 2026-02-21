@@ -14,10 +14,10 @@ import './App.css';
 
 // Components
 import Microphone from './components/Microphone.jsx';
+import SimliAvatar from './components/SimliAvatar.jsx';
 
 // Services
 import transcribe from './services/speechToText.mjs';
-import synthesize from './services/textToSpeech.mjs';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -33,7 +33,7 @@ function App() {
   const [audio, setAudio] = useState(null);
   const messagesEndRef = useRef(null);
   const sessionId = useRef(`session-${Date.now()}`);
-  const audioRef = useRef(null);
+  const avatarRef = useRef(null);
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
@@ -95,10 +95,9 @@ function App() {
 
   const sendMessageWithText = async (message) => {
     if (!message.trim() || isLoading) return;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
+
+    // Detener avatar si estaba hablando
+    avatarRef.current?.stop();
 
     const userMessage = {
       role: 'user',
@@ -110,50 +109,89 @@ function App() {
     setInputMessage('');
     setIsLoading(true);
 
+    // Agregar placeholder del asistente que se irá llenando con los chunks
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: '',
+      timestamp: new Date().toLocaleTimeString(),
+    }]);
+
     try {
-      const response = await axios.post(`${API_BASE_URL}/chat`, {
-        message: message,
-        session_id: sessionId.current,
-        top_k: 4,
-        temperature: 0.7,
-        llm_provider: llmProvider  // Enviar proveedor actual
+      const response = await fetch(`${API_BASE_URL}/chat-stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          session_id: sessionId.current,
+          top_k: 4,
+          temperature: 0.7,
+          llm_provider: llmProvider,
+        }),
       });
 
-      const assistantMessage = {
-        role: 'assistant',
-        content: response.data.answer,
-        timestamp: new Date().toLocaleTimeString(),
-        matchType: response.data.match_type,
-        similarity: response.data.best_faq_similarity,
-        contextType: response.data.context_type,
-        sources: response.data.relevant_documents
-      };
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullText = '';
+      let msgMeta = {};
 
-      setMessages(prev => [...prev, assistantMessage]);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      // Sintetizar con Amazon Polly (strip markdown + lowercase acronyms)
-      const plainText = response.data.answer
-        .replace(/\*\*(.*?)\*\*/g, '$1')
-        .replace(/\*(.*?)\*/g, '$1')
-        .replace(/^#{1,6}\s+/gm, '')
-        .replace(/^[-*]\s+/gm, '')
-        .replace(/\b(VOAE|UNAH|UNAH-VS|VRA|DIPP|PAC|PASEE|PROCAD|PROSENE|CIVU|PAIE|PAI-E|PAPE|PHUMA|IAG)\b/g,
-          match => match.toLowerCase());
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // conservar línea incompleta
 
-      const ttsData = await synthesize(plainText);
-      if (ttsData?.audio_base64) {
-        const audio = new Audio(`data:audio/mp3;base64,${ttsData.audio_base64}`);
-        audioRef.current = audio;
-        audio.play();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let data;
+          try {
+            data = JSON.parse(line.slice(6));
+          } catch {
+            continue;
+          }
+
+          if (data.type === 'meta') {
+            msgMeta = {
+              matchType: data.match_type,
+              similarity: data.best_faq_similarity,
+              contextType: data.context_type,
+              sources: data.relevant_documents,
+            };
+          } else if (data.type === 'chunk') {
+            fullText += (fullText ? ' ' : '') + data.text;
+            // Actualizar el último mensaje (el placeholder del asistente)
+            setMessages(prev => {
+              const arr = [...prev];
+              arr[arr.length - 1] = {
+                ...arr[arr.length - 1],
+                content: fullText,
+                ...msgMeta,
+              };
+              return arr;
+            });
+            // Enviar audio PCM al avatar Simli
+            avatarRef.current?.speak(data.audio_base64);
+          } else if (data.type === 'done') {
+            setIsLoading(false);
+          } else if (data.type === 'error') {
+            throw new Error(data.message);
+          }
+        }
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage = {
-        role: 'error',
-        content: 'Lo siento, ocurrió un error al procesar tu mensaje. Por favor intenta de nuevo.',
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => {
+        const arr = [...prev];
+        // Reemplazar el placeholder con mensaje de error
+        arr[arr.length - 1] = {
+          role: 'error',
+          content: 'Lo siento, ocurrió un error al procesar tu mensaje. Por favor intenta de nuevo.',
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        return arr;
+      });
     } finally {
       setIsLoading(false);
     }
@@ -230,6 +268,9 @@ function App() {
 
   return (
     <div className="app-container">
+      <div className="avatar-panel">
+        <SimliAvatar ref={avatarRef} />
+      </div>
       <div className="chat-container">
         {/* Header */}
         <div className="chat-header">
@@ -255,8 +296,8 @@ function App() {
                   className="model-select"
                   title="Cambiar modelo LLM"
                 >
-                  <option value="deepseek">DeepSeek</option>
                   <option value="groq">Groq (Llama 3.3 70B)</option>
+                  <option value="deepseek">DeepSeek</option>
                 </select>
               </div>
 

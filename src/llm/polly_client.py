@@ -24,17 +24,19 @@ class PollyClient:
 
     def synthesize(self, text: str) -> str:
         """
-        Sintetiza texto a audio MP3 con Amazon Polly.
+        Sintetiza texto a audio PCM con Amazon Polly.
+        Formato requerido por Simli: PCM16, 16000 Hz, mono.
 
         Args:
-            text: Texto a sintetizar (ya preprocesado)
+            text: Texto a sintetizar (ya preprocesado, sin markdown)
 
         Returns:
-            Audio MP3 codificado en base64
+            Audio PCM codificado en base64
         """
         response = self.client.synthesize_speech(
             Text=text,
-            OutputFormat='mp3',
+            OutputFormat='pcm',
+            SampleRate='16000',
             VoiceId=self.voice_id,
             Engine=self.engine,
             LanguageCode=self.language_code,

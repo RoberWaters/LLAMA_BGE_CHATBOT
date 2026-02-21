@@ -1,10 +1,48 @@
 .app-container {
   width: 100%;
-  max-width: 1200px;
+  max-width: 1400px;
   height: 90vh;
   display: flex;
+  gap: 20px;
   justify-content: center;
+  align-items: stretch;
+}
+
+/* Panel del avatar Simli */
+.avatar-panel {
+  width: 340px;
+  flex-shrink: 0;
+  background: #0a0a0a;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  display: flex;
   align-items: center;
+  justify-content: center;
+}
+
+.simli-avatar-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.simli-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 900px) {
+  .app-container {
+    flex-direction: column;
+    height: auto;
+  }
+  .avatar-panel {
+    width: 100%;
+    height: 300px;
+    flex-shrink: 0;
+  }
 }
 
 .chat-container {

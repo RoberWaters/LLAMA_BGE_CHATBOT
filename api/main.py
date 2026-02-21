@@ -16,11 +16,14 @@ os.chdir(BASE_DIR)
 
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
-
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 import uvicorn
+import asyncio
+import json
+import re
 from datetime import datetime
 
 from chatbot.chatbot import RAGChatbot
@@ -386,6 +389,95 @@ async def synthesize_speech(request: SynthesizeRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al sintetizar audio: {str(e)}")
+
+
+_ACRONYMS_PATTERN = re.compile(
+    r'\b(VOAE|UNAH|UNAH-VS|VRA|DIPP|PAC|PASEE|PROCAD|PROSENE|CIVU|PAIE|PAI-E|PAPE|PHUMA|IAG)\b'
+)
+
+def preprocess_text_for_tts(text: str) -> str:
+    """Elimina markdown y convierte acrónimos a minúsculas para Polly."""
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.*?)\*', r'\1', text)
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[-*]\s+', '', text, flags=re.MULTILINE)
+    text = _ACRONYMS_PATTERN.sub(lambda m: m.group().lower(), text)
+    return text.strip()
+
+
+def split_sentences(text: str) -> list:
+    """Divide el texto en oraciones para síntesis progresiva."""
+    parts = re.split(r'(?<=[.!?])\s+', text.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+@app.post("/chat-stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Endpoint SSE: procesa el mensaje RAG y devuelve oraciones con audio PCM
+    para animación en tiempo real con Simli.
+
+    Eventos SSE:
+      - type: "meta"  → metadata de la respuesta (match_type, sources, etc.)
+      - type: "chunk" → { text, audio_base64 } por cada oración
+      - type: "done"  → fin del stream
+      - type: "error" → mensaje de error
+    """
+    async def generate():
+        try:
+            chatbot = get_chatbot(request.session_id, request.llm_provider)
+            result = chatbot.chat(
+                user_message=request.message,
+                top_k=request.top_k,
+                temperature=request.temperature,
+                use_rag=True
+            )
+
+            # Enviar metadata primero
+            meta = {
+                "type": "meta",
+                "match_type": result.get("match_type"),
+                "best_faq_similarity": result.get("best_faq_similarity"),
+                "context_type": result.get("context_type"),
+                "relevant_documents": result.get("relevant_documents", []),
+                "timestamp": datetime.now().isoformat(),
+            }
+            yield f"data: {json.dumps(meta)}\n\n"
+            await asyncio.sleep(0)
+
+            # Sintetizar y enviar oración por oración
+            polly = get_polly_client()
+            answer = result.get("answer", "")
+            sentences = split_sentences(answer)
+
+            for sentence in sentences:
+                tts_text = preprocess_text_for_tts(sentence)
+                if not tts_text:
+                    continue
+                audio_b64 = polly.synthesize(tts_text)
+                chunk = {
+                    "type": "chunk",
+                    "text": sentence,
+                    "audio_base64": audio_b64,
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+                await asyncio.sleep(0)
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except Exception as e:
+            import traceback
+            print(f"❌ Error en /chat-stream: {traceback.format_exc()}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/change-model")
