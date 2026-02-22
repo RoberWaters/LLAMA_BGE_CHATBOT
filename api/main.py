@@ -15,7 +15,7 @@ sys.path.insert(0, str(BASE_DIR))
 os.chdir(BASE_DIR)
 
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -24,6 +24,7 @@ import uvicorn
 import asyncio
 import json
 import re
+import struct
 from datetime import datetime
 
 from chatbot.chatbot import RAGChatbot
@@ -525,6 +526,66 @@ async def change_model(request: ModelChangeRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al cambiar modelo: {str(e)}")
+
+
+def _float32_to_wav(float32_bytes: bytes, sample_rate: int = 16000) -> bytes:
+    """Convierte muestras Float32 (little-endian) a WAV PCM Int16 mono."""
+    n_samples = len(float32_bytes) // 4
+    samples = struct.unpack(f'<{n_samples}f', float32_bytes)
+    pcm_int16 = bytearray()
+    for s in samples:
+        val = max(-32768, min(32767, int(s * 32767)))
+        pcm_int16.extend(struct.pack('<h', val))
+
+    data_size = len(pcm_int16)
+    header = struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF', 36 + data_size, b'WAVE',
+        b'fmt ', 16, 1, 1,                      # PCM, mono
+        sample_rate, sample_rate * 2,            # sample rate, byte rate
+        2, 16,                                   # block align, bits per sample
+        b'data', data_size
+    )
+    return bytes(header) + bytes(pcm_int16)
+
+
+@app.websocket("/ws/transcribe")
+async def ws_transcribe(websocket: WebSocket):
+    """
+    WebSocket para transcripción de audio PCM en tiempo real.
+    El cliente envía chunks Float32 (binario) y una señal JSON {type:'done'} al terminar.
+    El servidor responde con {text: '...'} vía WebSocket.
+    """
+    await websocket.accept()
+    client = get_transcription_client()
+    pcm_buffer = bytearray()
+
+    try:
+        while True:
+            message = await websocket.receive()
+
+            if 'bytes' in message:
+                # Chunk de audio PCM Float32
+                pcm_buffer.extend(message['bytes'])
+
+            elif 'text' in message:
+                msg = json.loads(message['text'])
+                if msg.get('type') == 'done':
+                    text = None
+                    if pcm_buffer:
+                        wav_data = _float32_to_wav(bytes(pcm_buffer))
+                        text = client.transcribe_audio_bytes(wav_data, 'audio.wav', 'es')
+                    await websocket.send_text(json.dumps({'text': text or ''}))
+                    break
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        print(f"[WS] Error en transcripción: {e}")
+        try:
+            await websocket.send_text(json.dumps({'text': ''}))
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

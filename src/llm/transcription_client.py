@@ -8,6 +8,33 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Frases que Whisper alucina cuando recibe audio silencioso o corrupto.
+# Provienen del sesgo de entrenamiento con vídeos de YouTube.
+_HALLUCINATION_PHRASES = {
+    "gracias por ver el video",
+    "gracias por ver",
+    "gracias por ver este video",
+    "gracias por ver el vídeo",
+    "gracias por ver este vídeo",
+    "gracias por el video",
+    "gracias por el vídeo",
+    "suscríbete al canal",
+    "no olvides suscribirte",
+    "subtítulos realizados por la comunidad de amara",
+    "subtítulos por la comunidad de amara.org",
+    "thanks for watching",
+    "thank you for watching",
+    "subscribe to my channel",
+    "don't forget to subscribe",
+    "subtitles by the amara.org community",
+    "like and subscribe",
+    "see you next time",
+    "that's all for today",
+}
+
+# Tamaño mínimo de audio aceptable (~0.5 segundos de webm/opus a 128 kbps)
+_MIN_AUDIO_BYTES = 6_000
+
 
 class TranscriptionClient:
     """Cliente para transcribir audio usando Groq Whisper"""
@@ -54,6 +81,13 @@ class TranscriptionClient:
         # Tokens especiales de Whisper que se filtran al output
         if re.search(r"<\|.*?\|>", text):
             return True
+        # Frases conocidas que Whisper alucina con audio silencioso (sesgo YouTube)
+        normalized = text.strip().lower().rstrip(".!¡¿?,;:")
+        if normalized in _HALLUCINATION_PHRASES:
+            return True
+        for phrase in _HALLUCINATION_PHRASES:
+            if phrase in normalized and len(normalized) < len(phrase) + 20:
+                return True
         return False
 
     def transcribe_audio(self, audio_file_path: str, language: str = "es") -> str:
@@ -103,6 +137,11 @@ class TranscriptionClient:
         Raises:
             Exception: Si hay un error en la transcripción
         """
+        # Rechazar blobs demasiado pequeños antes de llamar a Groq.
+        # Audio < ~0.5s de webm/opus suele ser silencio y causa alucinaciones.
+        if len(audio_bytes) < _MIN_AUDIO_BYTES:
+            return None
+
         try:
             transcription = self.client.audio.transcriptions.create(
                 file=(filename, audio_bytes),
@@ -112,7 +151,10 @@ class TranscriptionClient:
                 prompt=self._transcription_prompt
             )
 
+            print(f"[Whisper] raw result: {repr(transcription)}")
+
             if self._is_hallucination(transcription):
+                print(f"[Whisper] detectado como alucinación, descartando")
                 return None
 
             return transcription

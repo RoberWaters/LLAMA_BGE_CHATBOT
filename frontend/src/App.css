@@ -33,6 +33,34 @@
   object-fit: cover;
 }
 
+.avatar-activate-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+.avatar-activate-btn {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  color: #333;
+  transition: transform 0.15s;
+}
+
+.avatar-activate-overlay:hover .avatar-activate-btn {
+  transform: scale(1.1);
+}
+
 @media (max-width: 900px) {
   .app-container {
     flex-direction: column;

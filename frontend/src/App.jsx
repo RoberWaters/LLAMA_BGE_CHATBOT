@@ -16,8 +16,6 @@ import './App.css';
 import Microphone from './components/Microphone.jsx';
 import SimliAvatar from './components/SimliAvatar.jsx';
 
-// Services
-import transcribe from './services/speechToText.mjs';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -27,10 +25,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [stats, setStats] = useState(null);
+
   const [showStats, setShowStats] = useState(false);
   const [llmProvider, setLlmProvider] = useState('groq'); // 'groq' o 'deepseek'
   const [isChangingModel, setIsChangingModel] = useState(false);
-  const [audio, setAudio] = useState(null);
   const messagesEndRef = useRef(null);
   const sessionId = useRef(`session-${Date.now()}`);
   const avatarRef = useRef(null);
@@ -41,9 +39,6 @@ function App() {
   };
 
   useEffect(() => {
-    console.log("Input: ", inputMessage);
-  })
-  useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
@@ -52,29 +47,20 @@ function App() {
     fetchStats();
   }, []);
 
-  // Realizar transcripción y envío del mensaje cuando se grabe un nuevo audio
-  useEffect(() => {
-    if (!audio) return;
-    const fetchData = async () => {
-      setIsTranscribing(true);
-      const transcription = await transcribe(audio);
-      setIsTranscribing(false);
-      const text = transcription?.text;
-      // There was an error when trying to transcribe the audio, show an error message in the chat
-      if (text == null){
-        const errorMessage = {
-          role: 'error',
-          content: 'Lo siento, no pude entenderte en este momento. Por favor intenta de nuevo o escribe tu pregunta.',
-          timestamp: new Date().toLocaleTimeString()
-        };
-        setMessages(prev => [...prev, errorMessage]);
-        return;
-      }
-      setInputMessage(text);
-      sendMessageWithText(text);
+  // Manejar resultado de transcripción WebSocket
+  const handleTranscriptionText = (text) => {
+    avatarRef.current?.unmute();
+    if (!text) {
+      setMessages(prev => [...prev, {
+        role: 'error',
+        content: 'Lo siento, no pude entenderte en este momento. Por favor intenta de nuevo o escribe tu pregunta.',
+        timestamp: new Date().toLocaleTimeString()
+      }]);
+      return;
     }
-    fetchData();
-  }, [audio]);
+    setInputMessage(text);
+    sendMessageWithText(text);
+  };
 
   const fetchStats = async () => {
     try {
@@ -447,7 +433,11 @@ function App() {
               rows="1"
               disabled={isLoading || isTranscribing}
             />
-            <Microphone onRecorded={setAudio} />
+            <Microphone
+              onStartRecording={() => { avatarRef.current?.stop(); avatarRef.current?.mute(); }}
+              onText={handleTranscriptionText}
+              onTranscribingChange={setIsTranscribing}
+            />
             <button
               onClick={sendMessage}
               disabled={!inputMessage.trim() || isLoading || isTranscribing}

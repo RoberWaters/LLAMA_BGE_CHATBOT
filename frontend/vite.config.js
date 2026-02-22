@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    // Usado para cache-busting del AudioWorklet processor
+    __APP_VERSION__: JSON.stringify(Date.now().toString()),
+  },
   optimizeDeps: {
     include: ['simli-client']
   },

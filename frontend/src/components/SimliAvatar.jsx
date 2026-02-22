@@ -1,4 +1,4 @@
-import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { SimliClient } from 'simli-client';
 
 function base64ToUint8Array(base64) {
@@ -18,8 +18,14 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     const audioRef = useRef(null);
     const clientRef = useRef(null);
     const isReadyRef = useRef(false);
+    // Ref para saber si ya se activó (sin depender de closures sobre estado)
+    const isActivatedRef = useRef(false);
+    const [isActivated, setIsActivated] = useState(false);
+    // Guarda el srcObject mientras el micrófono está activo
+    const savedStreamRef = useRef(null);
 
-    useEffect(() => {
+    // Crea e inicia un nuevo SimliClient dentro de un gesto de usuario.
+    const startNewClient = useCallback(() => {
         const myId = ++_clientCounter;
         console.log(`[Simli #${myId}] creando cliente`);
         const client = new SimliClient();
@@ -50,19 +56,38 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         });
 
         client.start();
+        return client;
+    }, []);
 
+    // Activa Simli — debe llamarse dentro o justo después de un gesto de usuario
+    // para que el navegador permita AudioContext y audio autoplay.
+    const activate = useCallback(() => {
+        if (isActivatedRef.current) return;
+        isActivatedRef.current = true;
+        setIsActivated(true);
+        console.log('[Simli] activando por gesto de usuario');
+        startNewClient();
+    }, [startNewClient]);
+
+    // Solo limpieza al desmontar — no auto-inicia para cumplir autoplay policy.
+    useEffect(() => {
         return () => {
-            console.log(`[Simli #${myId}] cleanup (close). isCurrent=${clientRef.current === client}`);
-            if (clientRef.current === client) isReadyRef.current = false;
-            client.close();
+            if (clientRef.current) {
+                console.log('[Simli] cleanup (close)');
+                isReadyRef.current = false;
+                clientRef.current.close();
+                clientRef.current = null;
+            }
         };
     }, []);
 
     useImperativeHandle(ref, () => ({
         speak: async (pcmBase64) => {
-            if (!pcmBase64 || !clientRef.current) return;
-            console.log(`[Simli speak] isReadyRef=${isReadyRef.current}, isConnected()=${clientRef.current.isConnected()}`);
-            // Poll isReadyRef (set por el evento 'connected' del cliente actual)
+            if (!pcmBase64) return;
+            // Auto-activar si el usuario envió un mensaje (gesto de teclado/clic)
+            activate();
+            console.log(`[Simli speak] isReadyRef=${isReadyRef.current}`);
+            // Poll hasta 10s para que Simli conecte
             let attempts = 0;
             while (!isReadyRef.current && attempts < 100) {
                 await new Promise(r => setTimeout(r, 100));
@@ -78,7 +103,47 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         stop: () => {
             clientRef.current?.ClearBuffer();
         },
-    }));
+        mute: () => {
+            console.log('[Simli] silenciando — removiendo srcObject del audio');
+            clientRef.current?.ClearBuffer();
+            if (audioRef.current) {
+                // Guardar el stream WebRTC antes de desconectarlo.
+                // muted=true solo suprime el volumen pero el stream WebRTC sigue
+                // activo y puede filtrarse al micrófono. srcObject=null lo corta
+                // completamente del pipeline de audio del OS.
+                if (audioRef.current.srcObject) {
+                    savedStreamRef.current = audioRef.current.srcObject;
+                }
+                audioRef.current.srcObject = null;
+                audioRef.current.muted = true;
+            }
+        },
+        unmute: () => {
+            console.log('[Simli] restaurando audio');
+            if (audioRef.current) {
+                // Restaurar el stream WebRTC que fue desconectado al mutear
+                if (savedStreamRef.current) {
+                    audioRef.current.srcObject = savedStreamRef.current;
+                    savedStreamRef.current = null;
+                }
+                audioRef.current.muted = false;
+                audioRef.current.play().catch(() => {});
+            }
+        },
+        // Desconecta Simli completamente (solo si es necesario liberar el pipeline).
+        pause: () => {
+            console.log('[Simli] pausando (desconectando)');
+            isReadyRef.current = false;
+            clientRef.current?.close();
+            if (audioRef.current) audioRef.current.muted = true;
+        },
+        // Reconecta Simli tras un pause().
+        resume: () => {
+            console.log('[Simli] resumiendo (reconectando)');
+            if (audioRef.current) audioRef.current.muted = false;
+            startNewClient();
+        },
+    }), [activate, startNewClient]);
 
     return (
         <div className="simli-avatar-wrapper">
@@ -89,6 +154,15 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
                 className="simli-video"
             />
             <audio ref={audioRef} autoPlay />
+            {!isActivated && (
+                <div
+                    className="avatar-activate-overlay"
+                    onClick={activate}
+                    title="Clic para activar el avatar"
+                >
+                    <div className="avatar-activate-btn">▶</div>
+                </div>
+            )}
         </div>
     );
 });
