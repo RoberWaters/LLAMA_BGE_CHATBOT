@@ -15,6 +15,7 @@ import './App.css';
 // Components
 import Microphone from './components/Microphone.jsx';
 import SimliAvatar from './components/SimliAvatar.jsx';
+import transcribe from './services/speechToText.mjs';
 
 
 const API_BASE_URL = 'http://localhost:8000';
@@ -24,6 +25,7 @@ function App() {
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [audio, setAudio] = useState(null);
   const [stats, setStats] = useState(null);
 
   const [showStats, setShowStats] = useState(false);
@@ -47,7 +49,20 @@ function App() {
     fetchStats();
   }, []);
 
-  // Manejar resultado de transcripción WebSocket
+  // Transcribir audio cuando el Microphone entrega un blob
+  useEffect(() => {
+    if (!audio) return;
+    setIsTranscribing(true);
+    transcribe(audio)
+      .then(data => handleTranscriptionText(data?.text?.trim() || null))
+      .catch(() => handleTranscriptionText(null))
+      .finally(() => {
+        setIsTranscribing(false);
+        setAudio(null);
+      });
+  }, [audio]);
+
+  // Manejar resultado de transcripción
   const handleTranscriptionText = (text) => {
     avatarRef.current?.unmute();
     if (!text) {
@@ -434,9 +449,8 @@ function App() {
               disabled={isLoading || isTranscribing}
             />
             <Microphone
+              onRecorded={setAudio}
               onStartRecording={() => { avatarRef.current?.stop(); avatarRef.current?.mute(); }}
-              onText={handleTranscriptionText}
-              onTranscribingChange={setIsTranscribing}
             />
             <button
               onClick={sendMessage}
