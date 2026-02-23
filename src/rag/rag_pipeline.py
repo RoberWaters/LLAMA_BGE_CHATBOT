@@ -15,6 +15,7 @@ from llm.deepseek_client import DeepSeekClient
 from llm.groq_client import GroqClient
 from rag.retriever import DocumentRetriever
 from rag.faq_handler import FAQHandler
+from config import RetrievalConfig
 
 
 class RAGPipeline:
@@ -135,14 +136,25 @@ class RAGPipeline:
         print("=" * 60)
         print(f"Pregunta: {question}\n")
 
-        # Enriquecer la query con contexto del historial para mejorar la búsqueda semántica
-        # Esto permite que preguntas de seguimiento como "¿En qué horario puedo ir?"
-        # se busquen con el contexto de la conversación anterior
+        # Enriquecer la query solo si parece un seguimiento de la conversación anterior.
+        # Enriquecer siempre añade ruido a preguntas independientes y perjudica la recuperación.
+        # Indicadores de seguimiento: pregunta corta (≤6 palabras) o inicia con pronombre/preposición.
+        _FOLLOW_UP_STARTERS = frozenset({
+            "y", "pero", "entonces", "también", "además",
+            "ese", "esa", "eso", "esto", "este", "estos", "estas",
+            "aquel", "aquella", "aquello", "ahí", "allí", "allá",
+            "cuándo", "cuando", "cómo", "como", "dónde", "donde",
+            "en", "para", "a", "de", "con", "al", "del",
+        })
         search_query = question
         if conversation_history:
-            last_user_msg = conversation_history[-1][0]
-            search_query = f"{last_user_msg} {question}"
-            print(f"Query enriquecida para búsqueda: {search_query}\n")
+            q_words = question.strip().split()
+            first_word = q_words[0].lower().strip('¿?¡!') if q_words else ''
+            is_follow_up = len(q_words) <= 6 or first_word in _FOLLOW_UP_STARTERS
+            if is_follow_up:
+                last_user_msg = conversation_history[-1][0]
+                search_query = f"{last_user_msg} {question}"
+                print(f"Query enriquecida para búsqueda: {search_query}\n")
 
         # Verificar que haya documentos
         doc_count = self.repository.count_documents()
@@ -181,11 +193,12 @@ class RAGPipeline:
                 top_k=top_k * 2  # Buscar más para compensar filtrado
             )
 
-            # Filtrar SOLO documentos que NO son FAQs
+            # Filtrar FAQs y documentos por debajo del umbral de similitud mínimo
             doc_results = [
                 (filename, content, score)
                 for filename, content, score in all_docs
                 if not filename.startswith('faq/')
+                and score >= RetrievalConfig.MIN_SIMILARITY_THRESHOLD
             ]
 
             # Limitar a top_k

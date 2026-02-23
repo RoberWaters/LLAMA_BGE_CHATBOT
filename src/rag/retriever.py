@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import numpy as np
 from typing import List, Tuple
 from database.repository import DocumentRepository
 from database.chroma_vector_store import ChromaVectorStore
@@ -34,26 +33,6 @@ class DocumentRetriever:
         self.repository = repository if repository else DocumentRepository()
         self.embedder = embedder if embedder else Embedder()
         self.storage = storage if storage else (repository.storage if repository else ChromaVectorStore())
-
-    def cosine_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
-        """
-        Calcula la similitud coseno entre dos embeddings
-
-        Args:
-            embedding1: Primer embedding
-            embedding2: Segundo embedding
-
-        Returns:
-            Valor de similitud coseno (0-1)
-        """
-        # Normalizar los vectores
-        embedding1_norm = embedding1 / (np.linalg.norm(embedding1) + 1e-10)
-        embedding2_norm = embedding2 / (np.linalg.norm(embedding2) + 1e-10)
-
-        # Calcular producto punto
-        similarity = np.dot(embedding1_norm, embedding2_norm)
-
-        return float(similarity)
 
     def retrieve_relevant_documents(
         self,

@@ -10,10 +10,18 @@ export default function Microphone({ onRecorded, onStartRecording }) {
     // TODO: Implement comm with LLM for audio transcription
     const [disabled, setDisabled] = useState(true);
     const [isRecording, setIsRecording] = useState(false);
-    let audioChunks = useRef([]);
-    let mediaRecorder = useRef(null);
-    let speechRecognition = useRef(null);
+    const audioChunks = useRef([]);
+    const mediaRecorder = useRef(null);
+    const speechRecognition = useRef(null);
+    // Ref para siempre llamar a la versión más reciente de onRecorded sin
+    // re-crear el MediaRecorder (evita stale closure en onstop).
+    const onRecordedRef = useRef(onRecorded);
     const audioMimeType = 'audio/webm';
+
+    // Mantener onRecordedRef actualizado en cada render
+    useEffect(() => {
+        onRecordedRef.current = onRecorded;
+    }, [onRecorded]);
 
     // Media Recorder setup
     useEffect(() => {
@@ -35,12 +43,12 @@ export default function Microphone({ onRecorded, onStartRecording }) {
             };
 
             // Handle Stop logic
-            mediaRecorder.current.onstop = (event) => {
+            mediaRecorder.current.onstop = () => {
                 const blob = new Blob(audioChunks.current, { type: audioMimeType });
                 // Clear audio chunks for the next recording
                 audioChunks.current = [];
-                // Pass the recorded audio to the parent component
-                onRecorded(blob);
+                // Llamar siempre a la versión más reciente del callback
+                onRecordedRef.current(blob);
             }
 
             // Enable the microphone button if access was granted
@@ -56,19 +64,17 @@ export default function Microphone({ onRecorded, onStartRecording }) {
 
     // Listen for microphone permission changes
     useEffect(() => {
-        const addMicPermissionListener = async () => {
-            navigator.permissions.query({ name: 'microphone' })
-                .then((permissionStatus) => {
-                    permissionStatus.onchange = () => {
-                        if (permissionStatus.state === 'granted') {
-                            setDisabled(false);
-                        } else {
-                            setDisabled(true);
-                        }
-                    };
-                });
+        let permissionStatus = null;
+        navigator.permissions.query({ name: 'microphone' })
+            .then((status) => {
+                permissionStatus = status;
+                permissionStatus.onchange = () => {
+                    setDisabled(permissionStatus.state !== 'granted');
+                };
+            });
+        return () => {
+            if (permissionStatus) permissionStatus.onchange = null;
         };
-        addMicPermissionListener();
     }, [])
 
     // Init Speech Recognition service. SR is used to stop recording when user stops speaking
@@ -82,9 +88,12 @@ export default function Microphone({ onRecorded, onStartRecording }) {
         speechRecognition.current.lang = "es-ES";
         speechRecognition.current.onspeechend = () => {
             speechRecognition.current.stop();
-            mediaRecorder.current.stop();
+            mediaRecorder.current?.stop();
             setIsRecording(false);
-        }
+        };
+        return () => {
+            speechRecognition.current?.abort();
+        };
     }, []);
 
     const handleRecording = async () => {
@@ -95,8 +104,11 @@ export default function Microphone({ onRecorded, onStartRecording }) {
 
         const toggleRecording = !isRecording;
         if (toggleRecording){
-            // Notificar al padre para que detenga/silencie el avatar
+            // Notificar al padre para que detenga/silencie el avatar (srcObject=null)
             onStartRecording?.();
+            // Esperar a que el buffer de audio del hardware drene antes de grabar,
+            // evitando que los últimos milisegundos del audio de Simli entren al mic.
+            await new Promise(r => setTimeout(r, 150));
             // Start recording
             mediaRecorder.current.start(1000);
             // Start recongnition service to stop when user stops speaking

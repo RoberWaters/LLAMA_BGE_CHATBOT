@@ -193,7 +193,7 @@ Instrucciones:
             return chat_completion.choices[0].message.content.strip()
 
         except Exception as e:
-            raise Exception(f"Error al llamar a la API de Groq: {str(e)}")
+            raise Exception(f"Error al llamar a la API de Groq: {str(e)}") from e
 
     def simple_chat(
         self,
@@ -225,7 +225,7 @@ Instrucciones:
             return chat_completion.choices[0].message.content.strip()
 
         except Exception as e:
-            raise Exception(f"Error al llamar a la API de Groq: {str(e)}")
+            raise Exception(f"Error al llamar a la API de Groq: {str(e)}") from e
 
 
 if __name__ == "__main__":

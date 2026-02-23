@@ -309,6 +309,7 @@ async def delete_session(session_id: str):
     if session_id in chat_sessions:
         chat_sessions[session_id].close()
         del chat_sessions[session_id]
+        session_llm_providers.pop(session_id, None)
         return {
             "message": f"Sesión {session_id} eliminada",
             "timestamp": datetime.now().isoformat()
@@ -352,6 +353,14 @@ async def transcribe_audio(audio: UploadFile = File(...), language: str = "es"):
     try:
         # Read audio bytes asynchronously (faster)
         audio_bytes = await audio.read()
+
+        # Descartar audio demasiado corto — Whisper alucina con silencio/ruido
+        # 500 bytes es ~15ms a 256kbps, insuficiente para contener voz real
+        if not audio_bytes or len(audio_bytes) < 500:
+            return TranscriptionResponse(
+                text=None,
+                timestamp=datetime.now().isoformat()
+            )
 
         # Get pre-initialized transcription client (no initialization delay)
         client = get_transcription_client()

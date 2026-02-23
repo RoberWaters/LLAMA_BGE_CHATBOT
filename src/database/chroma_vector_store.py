@@ -36,7 +36,7 @@ class ChromaVectorStore:
         print(f"ChromaDB inicializado en: {self.storage_path}")
         print(f"Documentos en colección: {self.collection.count()}")
 
-    def add_document(self, filename: str, content: str, embedding: np.ndarray) -> int:
+    def add_document(self, filename: str, content: str, embedding: np.ndarray) -> str:
         """
         Añade un documento con su embedding a ChromaDB
 
@@ -46,7 +46,7 @@ class ChromaVectorStore:
             embedding: Embedding numpy array (1024 dimensiones)
 
         Returns:
-            ID del documento insertado
+            ID del documento insertado (string)
         """
         # ChromaDB genera IDs automáticamente, pero usaremos el filename como ID
         # Convertir filename a un ID válido (sin espacios ni caracteres especiales)
@@ -64,9 +64,9 @@ class ChromaVectorStore:
         )
 
         print(f"Documento '{filename}' añadido con ID: {doc_id}")
-        return hash(doc_id)  # Retornar un hash como ID numérico
+        return doc_id
 
-    def get_all_documents(self) -> List[Tuple[int, str, str, np.ndarray]]:
+    def get_all_documents(self) -> List[Tuple[str, str, str, np.ndarray]]:
         """
         Obtiene todos los documentos con sus embeddings
 
@@ -87,7 +87,7 @@ class ChromaVectorStore:
                 embedding = np.array(results['embeddings'][i], dtype='float32')
 
                 documents.append((
-                    hash(doc_id),  # ID numérico
+                    doc_id,
                     filename,
                     content,
                     embedding
@@ -95,12 +95,12 @@ class ChromaVectorStore:
 
         return documents
 
-    def get_document_by_id(self, doc_id: int) -> Optional[Tuple[int, str, str, np.ndarray]]:
+    def get_document_by_id(self, doc_id: str) -> Optional[Tuple[str, str, str, np.ndarray]]:
         """
         Obtiene un documento por su ID
 
         Args:
-            doc_id: ID del documento (hash)
+            doc_id: ID del documento (string)
 
         Returns:
             Tupla (id, filename, content, embedding) o None si no existe
@@ -129,7 +129,7 @@ class ChromaVectorStore:
         try:
             result = self.collection.get(ids=[doc_id])
             return len(result['ids']) > 0
-        except:
+        except Exception:
             return False
 
     def count_documents(self) -> int:
@@ -141,12 +141,12 @@ class ChromaVectorStore:
         """
         return self.collection.count()
 
-    def delete_document(self, doc_id: int) -> bool:
+    def delete_document(self, doc_id: str) -> bool:
         """
         Elimina un documento por su ID
 
         Args:
-            doc_id: ID del documento (hash)
+            doc_id: ID del documento (string)
 
         Returns:
             True si se eliminó, False si no existía
@@ -162,7 +162,7 @@ class ChromaVectorStore:
                     self.collection.delete(ids=[chroma_id])
                     print(f"Documento {doc_id} eliminado")
                     return True
-                except:
+                except Exception:
                     return False
 
         return False
@@ -224,7 +224,7 @@ class ChromaVectorStore:
                 similarity = 1.0 - distance
 
                 similar_docs.append((
-                    hash(doc_id),
+                    doc_id,
                     filename,
                     content,
                     float(similarity)

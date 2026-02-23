@@ -47,13 +47,59 @@ class TranscriptionClient:
         terms = ", ".join(self._domain_terms)
         return f"Vocabulario específico: {terms}."
 
+    # Frases que Whisper-v3 alucina con silencio, ruido o audio muy corto.
+    # Verificadas empíricamente con audio en español sin voz.
+    _HALLUCINATION_PHRASES = frozenset({
+        "gracias.", "de nada.", "sí.", "no.", "ok.", "hola.", "bye.",
+        "hasta luego.", "buenas.", "claro.", "por favor.", "perdón.",
+        "gracias por ver el video.", "gracias por su atención.",
+        "suscríbete al canal.", "dale like y suscríbete.",
+        "subtítulos realizados por la comunidad de amara.org",
+        "subtítulos en español", "subtítulos por la comunidad",
+        "transcripción automática", "transcripción",
+        "thank you.", "thanks.", "you.", "yes.", "no.", "okay.",
+        "obrigado.", "obrigada.", "sim.", "não.",
+        "merci.", "oui.", "non.", "bonjour.",
+        "♪", "♫", "...", ". . .", "…",
+    })
+
     def _is_hallucination(self, text: str) -> bool:
-        """Detecta alucinaciones típicas de Whisper con audio corto o silencioso"""
+        """
+        Detecta alucinaciones típicas de Whisper con audio corto, silencioso o ruidoso.
+
+        Cubre los casos más comunes observados con whisper-large-v3:
+        - Texto vacío o solo whitespace
+        - Frases genéricas que Whisper alucina con silencio/ruido
+        - Texto demasiado corto para ser una pregunta real (< 4 caracteres)
+        - Palabras repetidas (e.g., "hola hola hola" desde ruido de fondo)
+        - Tokens especiales de Whisper que escapan al output
+        """
         if not text or not text.strip():
             return True
-        # Tokens especiales de Whisper que se filtran al output
-        if re.search(r"<\|.*?\|>", text):
+
+        clean = text.strip()
+
+        # Tokens especiales de Whisper
+        if re.search(r"<\|.*?\|>", clean):
             return True
+
+        # Texto demasiado corto para ser una pregunta real
+        if len(clean) < 4:
+            return True
+
+        # Frases conocidas de alucinación (case-insensitive)
+        if clean.lower() in self._HALLUCINATION_PHRASES:
+            return True
+
+        # Texto compuesto solo de puntuación, símbolos o espacios
+        if re.fullmatch(r'[\W\s]+', clean):
+            return True
+
+        # Palabra única repetida 3+ veces (e.g., "hola hola hola")
+        words = clean.split()
+        if len(words) >= 3 and len(set(w.lower().strip('.,!?') for w in words)) == 1:
+            return True
+
         return False
 
     def transcribe_audio(self, audio_file_path: str, language: str = "es") -> str:
@@ -86,7 +132,7 @@ class TranscriptionClient:
             return transcription
 
         except Exception as e:
-            raise Exception(f"Error al transcribir audio: {str(e)}")
+            raise Exception(f"Error al transcribir audio: {str(e)}") from e
 
     def transcribe_audio_bytes(self, audio_bytes: bytes, filename: str = "audio.wav", language: str = "es") -> str:
         """
@@ -118,7 +164,7 @@ class TranscriptionClient:
             return transcription
 
         except Exception as e:
-            raise Exception(f"Error al transcribir audio: {str(e)}")
+            raise Exception(f"Error al transcribir audio: {str(e)}") from e
 
 
 if __name__ == "__main__":

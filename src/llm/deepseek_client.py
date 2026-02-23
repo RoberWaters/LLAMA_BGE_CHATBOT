@@ -204,7 +204,7 @@ Instrucciones:
                 raise Exception("Respuesta de la API no tiene el formato esperado")
 
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Error al llamar a la API de DeepSeek: {str(e)}")
+            raise Exception(f"Error al llamar a la API de DeepSeek: {str(e)}") from e
 
     def simple_chat(
         self,
@@ -249,7 +249,7 @@ Instrucciones:
                 raise Exception("Respuesta de la API no tiene el formato esperado")
 
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Error al llamar a la API de DeepSeek: {str(e)}")
+            raise Exception(f"Error al llamar a la API de DeepSeek: {str(e)}") from e
 
 
 if __name__ == "__main__":

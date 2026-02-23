@@ -28,7 +28,7 @@ class DocumentRepository:
         self.storage = storage
         self.storage_type = "chroma"
 
-    def insert_document(self, filename: str, content: str, embedding_bytes: bytes) -> int:
+    def insert_document(self, filename: str, content: str, embedding_bytes: bytes) -> str:
         """
         Inserta un documento con su embedding en ChromaDB
 
@@ -45,9 +45,9 @@ class DocumentRepository:
             embedding = np.frombuffer(embedding_bytes, dtype='float32')
             return self.storage.add_document(filename, content, embedding)
         except Exception as e:
-            raise Exception(f"Error al insertar documento: {str(e)}")
+            raise Exception(f"Error al insertar documento: {str(e)}") from e
 
-    def get_all_documents(self) -> List[Tuple[int, str, str, bytes]]:
+    def get_all_documents(self) -> List[Tuple[str, str, str, bytes]]:
         """
         Obtiene todos los documentos desde ChromaDB
 
@@ -65,9 +65,9 @@ class DocumentRepository:
             print(f"Se recuperaron {len(result)} documentos")
             return result
         except Exception as e:
-            raise Exception(f"Error al obtener documentos: {str(e)}")
+            raise Exception(f"Error al obtener documentos: {str(e)}") from e
 
-    def get_document_by_id(self, doc_id: int) -> Optional[Tuple[int, str, str, bytes]]:
+    def get_document_by_id(self, doc_id: str) -> Optional[Tuple[str, str, str, bytes]]:
         """
         Obtiene un documento por su ID desde ChromaDB
 
@@ -85,9 +85,9 @@ class DocumentRepository:
                 return (doc_id, filename, content, embedding_bytes)
             return None
         except Exception as e:
-            raise Exception(f"Error al obtener documento: {str(e)}")
+            raise Exception(f"Error al obtener documento: {str(e)}") from e
 
-    def delete_document(self, doc_id: int) -> bool:
+    def delete_document(self, doc_id: str) -> bool:
         """
         Elimina un documento por su ID de ChromaDB
 
@@ -100,7 +100,7 @@ class DocumentRepository:
         try:
             return self.storage.delete_document(doc_id)
         except Exception as e:
-            raise Exception(f"Error al eliminar documento: {str(e)}")
+            raise Exception(f"Error al eliminar documento: {str(e)}") from e
 
     def delete_all_documents(self) -> int:
         """
@@ -112,7 +112,7 @@ class DocumentRepository:
         try:
             return self.storage.delete_all_documents()
         except Exception as e:
-            raise Exception(f"Error al eliminar documentos: {str(e)}")
+            raise Exception(f"Error al eliminar documentos: {str(e)}") from e
 
     def count_documents(self) -> int:
         """
@@ -124,7 +124,7 @@ class DocumentRepository:
         try:
             return self.storage.count_documents()
         except Exception as e:
-            raise Exception(f"Error al contar documentos: {str(e)}")
+            raise Exception(f"Error al contar documentos: {str(e)}") from e
 
     def document_exists(self, filename: str) -> bool:
         """
@@ -139,4 +139,4 @@ class DocumentRepository:
         try:
             return self.storage.document_exists(filename)
         except Exception as e:
-            raise Exception(f"Error al verificar documento: {str(e)}")
+            raise Exception(f"Error al verificar documento: {str(e)}") from e

@@ -23,7 +23,11 @@ class RAGChatbot:
         """
         self.pipeline = RAGPipeline(docs_folder, llm_provider=llm_provider)
         self.max_history = max_history
-        self.conversation_history = []
+        self.conversation_history: List[Tuple[str, str]] = []
+        # Tipo de match por turno ('high'|'medium'|'low'|'none').
+        # Los turnos con match_type=='none' indican que no hubo docs relevantes
+        # y la respuesta puede ser una alucinación; se excluyen del contexto LLM.
+        self._history_confidence: List[str] = []
 
     def _format_history_for_llm(self) -> str:
         """
@@ -70,12 +74,20 @@ class RAGChatbot:
 
         # Si usa RAG, hacer consulta con sistema FAQ híbrido
         if use_rag:
+            # Excluir del contexto LLM los turnos sin documentos relevantes ('none'),
+            # ya que esas respuestas pueden ser alucinaciones que contaminarían el contexto.
+            recent = list(zip(
+                self.conversation_history[-self.max_history:],
+                self._history_confidence[-self.max_history:]
+            ))
+            reliable_history = [turn for turn, conf in recent if conf != 'none']
+
             result = self.pipeline.query_with_faq(
                 question=user_message,
                 top_k=top_k,
                 temperature=temperature,
                 enable_faq=True,
-                conversation_history=self.conversation_history[-5:]
+                conversation_history=reliable_history
             )
         else:
             # Sin RAG, solo conversación con historial
@@ -102,18 +114,20 @@ class RAGChatbot:
                     "error": str(e)
                 }
 
-        # Agregar al historial (mantener solo los últimos max_history)
-        self.conversation_history.append((user_message, result["answer"]))
-
-        # Limitar el historial
-        if len(self.conversation_history) > self.max_history:
-            self.conversation_history = self.conversation_history[-self.max_history:]
+        # Solo agregar al historial si la respuesta no es un error
+        if not result.get("error"):
+            self.conversation_history.append((user_message, result["answer"]))
+            self._history_confidence.append(result.get("match_type", "low"))
+            if len(self.conversation_history) > self.max_history:
+                self.conversation_history = self.conversation_history[-self.max_history:]
+                self._history_confidence = self._history_confidence[-self.max_history:]
 
         return result
 
     def clear_history(self):
         """Limpia el historial de conversación"""
         self.conversation_history = []
+        self._history_confidence = []
         print("Historial de conversación limpiado")
 
     def get_history(self) -> List[Tuple[str, str]]:
@@ -137,6 +151,7 @@ class RAGChatbot:
         # Recortar historial actual si excede el nuevo límite
         if len(self.conversation_history) > max_history:
             self.conversation_history = self.conversation_history[-max_history:]
+            self._history_confidence = self._history_confidence[-max_history:]
 
     def get_stats(self) -> dict:
         """

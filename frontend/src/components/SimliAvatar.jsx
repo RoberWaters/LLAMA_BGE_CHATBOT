@@ -18,6 +18,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     const audioRef = useRef(null);
     const clientRef = useRef(null);
     const isReadyRef = useRef(false);
+    const isFailedRef = useRef(false);
     // Ref para saber si ya se activó (sin depender de closures sobre estado)
     const isActivatedRef = useRef(false);
     const [isActivated, setIsActivated] = useState(false);
@@ -31,6 +32,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         const client = new SimliClient();
         clientRef.current = client;
         isReadyRef.current = false;
+        isFailedRef.current = false;
 
         client.Initialize({
             apiKey: import.meta.env.VITE_SIMLI_API_KEY,
@@ -52,7 +54,10 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
 
         client.on('failed', (e) => {
             console.error(`[Simli #${myId}] fallo:`, e);
-            if (clientRef.current === client) isReadyRef.current = false;
+            if (clientRef.current === client) {
+                isReadyRef.current = false;
+                isFailedRef.current = true;
+            }
         });
 
         client.start();
@@ -78,6 +83,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
                 clientRef.current.close();
                 clientRef.current = null;
             }
+            savedStreamRef.current = null;
         };
     }, []);
 
@@ -87,18 +93,18 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             // Auto-activar si el usuario envió un mensaje (gesto de teclado/clic)
             activate();
             console.log(`[Simli speak] isReadyRef=${isReadyRef.current}`);
-            // Poll hasta 10s para que Simli conecte
+            // Poll hasta 2s para que Simli conecte; abortar si falla
             let attempts = 0;
-            while (!isReadyRef.current && attempts < 100) {
+            while (!isReadyRef.current && !isFailedRef.current && attempts < 20) {
                 await new Promise(r => setTimeout(r, 100));
                 attempts++;
             }
             if (!isReadyRef.current) {
-                console.warn('[Simli] No listo tras espera, descartando audio');
+                console.warn('[Simli] No listo tras espera (failed=%s), descartando audio', isFailedRef.current);
                 return;
             }
             const bytes = base64ToUint8Array(pcmBase64);
-            clientRef.current.sendAudioData(bytes);
+            clientRef.current?.sendAudioData(bytes);
         },
         stop: () => {
             clientRef.current?.ClearBuffer();
