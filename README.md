@@ -1,6 +1,6 @@
 # Chatbot VOAE — Sistema RAG con Avatar Conversacional
 
-Chatbot con inteligencia artificial para la **Vicerrectoría de Orientación y Asuntos Estudiantiles (VOAE)** de la UNAH-VS. Combina recuperación semántica de documentos (RAG) con un sistema FAQ híbrido, síntesis de voz y un avatar animado con lip-sync en tiempo real.
+Chatbot con inteligencia artificial para la **Vicerrectoría de Orientación y Asuntos Estudiantiles (VOAE)** de la UNAH. Combina recuperación semántica de documentos (RAG) con un sistema FAQ híbrido, síntesis de voz y un avatar animado con lip-sync en tiempo real.
 
 ---
 
