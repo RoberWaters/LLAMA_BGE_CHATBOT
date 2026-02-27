@@ -2,10 +2,10 @@
 ## Objetivo general
 Propiciar la generación de conocimiento en diferentes aspectos académicos y biopsicosociales de vida y atención integral estudiantil universitaria, mediante la organización, ejecución, articulación y socialización de procesos de investigación disciplinares e interdisciplinares aplicados, que permitan contribuir al mejoramiento continuo y a la toma de decisiones en los aspectos políticos, estratégicos y operativos de la gestión de vida estudiantil de la UNAH.
 ## Objetivos específicos
-1- Coordinar, monitorear y evaluar la implementación de procesos de investigación en el marco del Programa de Atención Integral Estudiantil (PAI-E).
-2- Coordinar, en conjunto con las áreas académicas de la VOAE, el desarrollo de procesos de investigación que permitan una gestión académica y administrativa basada en evidencias, incorporándose de forma permanente al quehacer estratégico y operativo de esta Vicerrectoría.
-3- Coordinar y articular el desarrollo de procesos de investigación en conjunto con facultades y carreras de la UNAH, con instituciones académicas a nivel nacional e internacional, y con instancias gubernamentales o no gubernamentales, con el fin de generar conocimiento sobre políticas y prácticas basadas en evidencia científica relacionadas al quehacer estratégico y operativo de la vida estudiantil universitaria.
-4- Divulgar los nuevos conocimientos, generados a partir de proyectos de investigación, por medios de difusión y publicación académica institucional, nacional, regional y/o internacional.
+1. Coordinar, monitorear y evaluar la implementación de procesos de investigación en el marco del Programa de Atención Integral Estudiantil (PAI-E).
+2. Coordinar, en conjunto con las áreas académicas de la VOAE, el desarrollo de procesos de investigación que permitan una gestión académica y administrativa basada en evidencias, incorporándose de forma permanente al quehacer estratégico y operativo de esta Vicerrectoría.
+3. Coordinar y articular el desarrollo de procesos de investigación en conjunto con facultades y carreras de la UNAH, con instituciones académicas a nivel nacional e internacional, y con instancias gubernamentales o no gubernamentales, con el fin de generar conocimiento sobre políticas y prácticas basadas en evidencia científica relacionadas al quehacer estratégico y operativo de la vida estudiantil universitaria.
+4. Divulgar los nuevos conocimientos, generados a partir de proyectos de investigación, por medios de difusión y publicación académica institucional, nacional, regional y/o internacional.
 ## Linea de investigación macro
 Aspectos biopsicosociales y académicos de gestión de vida estudiantil durante el ingreso, permanencia y promoción universitaria.
 Ingreso -> Permanencia -> Promoción
@@ -26,32 +26,29 @@ Emprendimiento según áreas del conocimiento.
 Competencias para la empleabilidad y vinculación con el mundo laboral.
 Experiencias de egresados y su retroalimentación a la academia.
 # Programa de Atención Integral Estudiantil (PAIE)
-Se fundamenta en la Ley Orgánica de la UNAH, el reglamento de estudiantes y las Normas Académicas de la UNAH (Capítulo VII, Artículo 260) y busca integrar aspectos de gestión académica, científica y administrativa, que permita la generación de diagnósticos de tamizaje en aspectos bio-psico-sociales de la comunidad estudiantil universitaria y en la subsecuente implementación de procesos de intervención, que incluyan elementos de abordaje multi e interdisciplinar y mecanismos de sectorización y dispensarización de los abordajes. 
-Como parte de las estrategias de intervención generales del PAIE se plantean 5 pilares fundamentales (salud, deporte, arte, ambiente y aspectos psicopedagógicos). Cada uno de estos pilares se cimientan en criterios de cobertura, acceso, disponibilidad y equidad en la comunidad estudiantil universitaria.
+Se fundamenta en la Ley Orgánica de la UNAH, el reglamento de estudiantes y las Normas Académicas de la UNAH (Capítulo VII, Artículo 260) y busca integrar aspectos de gestión académica, científica y administrativa, que permita la generación de diagnósticos de tamizaje en aspectos bio-psico-sociales de la comunidad estudiantil universitaria y en la subsecuente implementación de procesos de intervención, que incluyan elementos de abordaje multi e interdisciplinar y mecanismos de sectorización y dispensarización de los abordajes. Como parte de las estrategias de intervención generales del PAIE se plantean 5 pilares fundamentales (salud, deporte, arte, ambiente y aspectos psicopedagógicos). Cada uno de estos pilares se cimientan en criterios de cobertura, acceso, disponibilidad y equidad en la comunidad estudiantil universitaria.
 ## Proposito del PAIE
 Desarrollar procesos de vida estudiantil y atención integral que mejoren, integren y cohesionen de manera plena las condiciones de convivencia, calidad de vida, rendimiento académico y participación de los estudiantes en sus diferentes espacios, ámbitos y ambientes.
 ## Finalidad del PAIE
 Contribuir a forjar valores, principios, condiciones y estilos de vida que hagan del estudiante y futuro profesional universitario un ciudadano socialmente solidario, integro, ético, responsable y comprometido con los procesos de transformación del país.
 ## Pilares y estrategias del PAIE
-1- Salud
-1.1.Promover la sectorización, dispensarización e investigación en diferentes aspectos de la salud de los estudiantes universitarios. 
+1. Salud
+1.1 Promover la sectorización, dispensarización e investigación en diferentes aspectos de la salud de los estudiantes universitarios. 
 1.2.Garantizar cobertura, acceso y disponibilidad de los servicios de salud a la comunidad estudiantil universitaria.
-2- Deporte
+2. Deporte
 2.1 Promover el desarrollo de actividad física para la salud (dispensarización) 
 2.2 Desarrollar programas para la masificación del deporte recreativo (por sector).
-3- Arte
+3. Arte
 3.1 Promoción de la actividad cultural mediante la producción artística según grupos de riesgo. 
 3.2 Agenda cultural abierta para una comunidad universitaria que promueva un ambiente de resiliencia.
-4- Medio Ambiente
+4. Medio Ambiente
 4.1 Instalación de medios y espacios terapéuticos en ambientes abiertos para grupos clasificados. 
 4.2 Creación e identificación de espacios de encuentro para generar y promover condiciones de vida estudiantil.
-5- Entorno psicopedagógico
+5. Entorno psicopedagógico
 5.1 Promover la sectorización, dispensarización e investigación de programas psicopedagógicos y de adaptación académica en estudiantes universitarios.
 ## Mecanismos de implementación
-Interdisciplinariedad: permitiendo el abordaje integral del estudiante, desde diferentes áreas del conocimiento que propicien su bienestar pleno. 
-Sectorización: permitiendo la delimitación de un determinado espacio geográfico con la finalidad de organizar y establecer equipos de salud que trabajarán en el sector. Por ejemplo: centros regionales, facultades, carreras. 
-Dispensarización: que permita la evaluación dinámica, organizada y continua del estado de salud de los estudiantes en la comunidad universitaria. Se plantean 4 categorías dispensariales:  
-Para tener mayor ilustración de las categorías de dispensarización que se plantean se definen a continuación.  
+Interdisciplinariedad: permitiendo el abordaje integral del estudiante, desde diferentes áreas del conocimiento que propicien su bienestar pleno. Sectorización: permitiendo la delimitación de un determinado espacio geográfico con la finalidad de organizar y establecer equipos de salud que trabajarán en el sector. Por ejemplo: centros regionales, facultades, carreras. 
+Dispensarización: que permita la evaluación dinámica, organizada y continua del estado de salud de los estudiantes en la comunidad universitaria. Se plantean 4 categorías dispensariales:  Para tener mayor ilustración de las categorías de dispensarización que se plantean se definen a continuación.  
 Grupo 1: estudiantes aparentemente sanos. 
 Grupo 2: estudiantes con factores de riesgo 
 Grupo 3: estudiantes con enfermedades crónicas no transmisibles. 
