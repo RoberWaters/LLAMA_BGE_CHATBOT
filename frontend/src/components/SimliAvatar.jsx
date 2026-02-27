@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, forwardRef, useImperativeHandle, useCallback } from 'react';
-import { SimliClient } from 'simli-client';
+import { SimliClient, generateSimliSessionToken, generateIceServers } from 'simli-client';
 
 function base64ToUint8Array(base64) {
     const binary = atob(base64);
@@ -24,55 +24,84 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     // Guarda el srcObject mientras el micrófono está activo
     const savedStreamRef = useRef(null);
 
-    // Crea e inicia un nuevo SimliClient.
-    const startNewClient = useCallback(() => {
+    // Crea e inicia un nuevo SimliClient con la API v3.
+    const startNewClient = useCallback(async () => {
         const myId = ++_clientCounter;
         console.log(`[Simli #${myId}] creando cliente`);
-        const client = new SimliClient();
-        clientRef.current = client;
         isReadyRef.current = false;
         isFailedRef.current = false;
         setConnectionStatus('loading');
 
-        client.Initialize({
-            apiKey: import.meta.env.VITE_SIMLI_API_KEY,
-            faceID: import.meta.env.VITE_SIMLI_FACE_ID,
-            handleSilence: true,
-            videoRef: videoRef.current,
-            audioRef: audioRef.current,
-        });
+        const apiKey = import.meta.env.VITE_SIMLI_API_KEY;
+        const faceId = import.meta.env.VITE_SIMLI_FACE_ID;
 
-        client.on('connected', () => {
-            const isCurrent = clientRef.current === client;
-            console.log(`[Simli #${myId}] 'connected', isCurrent=${isCurrent}`);
-            if (isCurrent) {
-                isReadyRef.current = true;
-                setConnectionStatus('ready');
-                console.log(`[Simli #${myId}] LISTO para recibir audio`);
-            }
-        });
+        try {
+            // Obtener session token e ICE servers en paralelo
+            const [sessionData, iceServers] = await Promise.all([
+                generateSimliSessionToken({
+                    apiKey,
+                    config: {
+                        faceId,
+                        handleSilence: true,
+                        maxSessionLength: 3600,
+                        maxIdleTime: 300,
+                        model: 'fasttalk',
+                    },
+                }),
+                generateIceServers(apiKey),
+            ]);
 
-        client.on('failed', (e) => {
-            console.error(`[Simli #${myId}] fallo:`, e);
-            if (clientRef.current === client) {
-                isReadyRef.current = false;
-                isFailedRef.current = true;
-                setConnectionStatus('failed');
-            }
-        });
+            const client = new SimliClient(
+                sessionData.session_token,
+                videoRef.current,
+                audioRef.current,
+                iceServers,
+            );
+            clientRef.current = client;
 
-        client.start();
-        return client;
+            client.on('connected', () => {
+                const isCurrent = clientRef.current === client;
+                console.log(`[Simli #${myId}] 'connected', isCurrent=${isCurrent}`);
+                if (isCurrent) {
+                    isReadyRef.current = true;
+                    setConnectionStatus('ready');
+                    console.log(`[Simli #${myId}] LISTO para recibir audio`);
+                }
+            });
+
+            client.on('failed', (e) => {
+                console.error(`[Simli #${myId}] fallo:`, e);
+                if (clientRef.current === client) {
+                    isReadyRef.current = false;
+                    isFailedRef.current = true;
+                    setConnectionStatus('failed');
+                }
+            });
+
+            // start() es async e internamente maneja reintentos
+            client.start().catch((e) => {
+                console.error(`[Simli #${myId}] start() falló:`, e);
+                if (clientRef.current === client) {
+                    isReadyRef.current = false;
+                    isFailedRef.current = true;
+                    setConnectionStatus('failed');
+                }
+            });
+        } catch (e) {
+            console.error(`[Simli #${myId}] error al obtener token/ICE:`, e);
+            isFailedRef.current = true;
+            setConnectionStatus('failed');
+        }
     }, []);
 
-    // Auto-inicia al montar. El cleanup cierra el cliente al desmontar.
+    // Auto-inicia al montar. El cleanup detiene el cliente al desmontar.
     useEffect(() => {
         startNewClient();
         return () => {
             if (clientRef.current) {
-                console.log('[Simli] cleanup (close)');
+                console.log('[Simli] cleanup (stop)');
                 isReadyRef.current = false;
-                clientRef.current.close();
+                clientRef.current.stop().catch(() => {});
                 clientRef.current = null;
             }
             savedStreamRef.current = null;
@@ -103,10 +132,6 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             console.log('[Simli] silenciando — removiendo srcObject del audio');
             clientRef.current?.ClearBuffer();
             if (audioRef.current) {
-                // Guardar el stream WebRTC antes de desconectarlo.
-                // muted=true solo suprime el volumen pero el stream WebRTC sigue
-                // activo y puede filtrarse al micrófono. srcObject=null lo corta
-                // completamente del pipeline de audio del OS.
                 if (audioRef.current.srcObject) {
                     savedStreamRef.current = audioRef.current.srcObject;
                 }
@@ -117,7 +142,6 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         unmute: () => {
             console.log('[Simli] restaurando audio');
             if (audioRef.current) {
-                // Restaurar el stream WebRTC que fue desconectado al mutear
                 if (savedStreamRef.current) {
                     audioRef.current.srcObject = savedStreamRef.current;
                     savedStreamRef.current = null;
@@ -130,7 +154,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         pause: () => {
             console.log('[Simli] pausando (desconectando)');
             isReadyRef.current = false;
-            clientRef.current?.close();
+            clientRef.current?.stop().catch(() => {});
             if (audioRef.current) audioRef.current.muted = true;
         },
         // Reconecta Simli tras un pause().
