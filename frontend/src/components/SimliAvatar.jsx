@@ -19,13 +19,12 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     const clientRef = useRef(null);
     const isReadyRef = useRef(false);
     const isFailedRef = useRef(false);
-    // Ref para saber si ya se activó (sin depender de closures sobre estado)
-    const isActivatedRef = useRef(false);
-    const [isActivated, setIsActivated] = useState(false);
+    // 'loading' | 'ready' | 'failed'
+    const [connectionStatus, setConnectionStatus] = useState('loading');
     // Guarda el srcObject mientras el micrófono está activo
     const savedStreamRef = useRef(null);
 
-    // Crea e inicia un nuevo SimliClient dentro de un gesto de usuario.
+    // Crea e inicia un nuevo SimliClient.
     const startNewClient = useCallback(() => {
         const myId = ++_clientCounter;
         console.log(`[Simli #${myId}] creando cliente`);
@@ -33,6 +32,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         clientRef.current = client;
         isReadyRef.current = false;
         isFailedRef.current = false;
+        setConnectionStatus('loading');
 
         client.Initialize({
             apiKey: import.meta.env.VITE_SIMLI_API_KEY,
@@ -43,11 +43,11 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         });
 
         client.on('connected', () => {
-            const connected = client.isConnected();
             const isCurrent = clientRef.current === client;
-            console.log(`[Simli #${myId}] 'connected', isConnected()=${connected}, isCurrent=${isCurrent}`);
-            if (connected && isCurrent) {
+            console.log(`[Simli #${myId}] 'connected', isCurrent=${isCurrent}`);
+            if (isCurrent) {
                 isReadyRef.current = true;
+                setConnectionStatus('ready');
                 console.log(`[Simli #${myId}] LISTO para recibir audio`);
             }
         });
@@ -57,6 +57,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             if (clientRef.current === client) {
                 isReadyRef.current = false;
                 isFailedRef.current = true;
+                setConnectionStatus('failed');
             }
         });
 
@@ -64,18 +65,9 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         return client;
     }, []);
 
-    // Activa Simli — debe llamarse dentro o justo después de un gesto de usuario
-    // para que el navegador permita AudioContext y audio autoplay.
-    const activate = useCallback(() => {
-        if (isActivatedRef.current) return;
-        isActivatedRef.current = true;
-        setIsActivated(true);
-        console.log('[Simli] activando por gesto de usuario');
-        startNewClient();
-    }, [startNewClient]);
-
-    // Solo limpieza al desmontar — no auto-inicia para cumplir autoplay policy.
+    // Auto-inicia al montar. El cleanup cierra el cliente al desmontar.
     useEffect(() => {
+        startNewClient();
         return () => {
             if (clientRef.current) {
                 console.log('[Simli] cleanup (close)');
@@ -90,8 +82,6 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     useImperativeHandle(ref, () => ({
         speak: async (pcmBase64) => {
             if (!pcmBase64) return;
-            // Auto-activar si el usuario envió un mensaje (gesto de teclado/clic)
-            activate();
             console.log(`[Simli speak] isReadyRef=${isReadyRef.current}`);
             // Poll hasta 2s para que Simli conecte; abortar si falla
             let attempts = 0;
@@ -149,7 +139,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             if (audioRef.current) audioRef.current.muted = false;
             startNewClient();
         },
-    }), [activate, startNewClient]);
+    }), [startNewClient]);
 
     return (
         <div className="simli-avatar-wrapper">
@@ -158,15 +148,22 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
                 autoPlay
                 playsInline
                 className="simli-video"
+                onPlay={() => {
+                    setConnectionStatus('ready');
+                    isReadyRef.current = true;
+                }}
             />
             <audio ref={audioRef} autoPlay />
-            {!isActivated && (
-                <div
-                    className="avatar-activate-overlay"
-                    onClick={activate}
-                    title="Clic para activar el avatar"
-                >
-                    <div className="avatar-activate-btn">▶</div>
+            {connectionStatus !== 'ready' && (
+                <div className="avatar-loading-overlay">
+                    {connectionStatus === 'failed' ? (
+                        <span className="avatar-loading-text">Error de conexión</span>
+                    ) : (
+                        <>
+                            <div className="avatar-spinner" />
+                            <span className="avatar-loading-text">Cargando avatar...</span>
+                        </>
+                    )}
                 </div>
             )}
         </div>
