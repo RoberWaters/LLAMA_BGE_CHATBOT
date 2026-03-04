@@ -1,61 +1,38 @@
 """
-Módulo para interactuar con la API de Groq (ultra-rápida)
+Cliente Amazon Bedrock para LLM (Claude 3.5 Haiku)
 """
-import os
-from dotenv import load_dotenv
+import json
+import boto3
 from typing import List, Tuple, Optional
-from groq import Groq
+from config import BedrockConfig
 
 
-class GroqClient:
-    """Cliente para la API de Groq con modelos ultra-rápidos"""
+class BedrockClient:
+    """Cliente para Amazon Bedrock usando Claude 3.5 Haiku"""
 
-    def __init__(self, model: str = "llama-3.3-70b-versatile"):
-        """
-        Inicializa el cliente de Groq
+    def __init__(self, model_id: str = None):
+        self.model_id = model_id or BedrockConfig.LLM_MODEL_ID
+        self.model = self.model_id  # alias usado por rag_pipeline.get_stats()
 
-        Args:
-            model: Modelo a usar. Opciones:
-                - "llama-3.3-70b-versatile": Llama 3.3 70B (mejor calidad, recomendado)
-                - "llama-3.1-8b-instant": Llama 3.1 8B (más rápido)
-                - "llama-3.2-90b-text-preview": Llama 3.2 90B (experimental)
-        """
-        load_dotenv()
+        if not BedrockConfig.AWS_ACCESS_KEY or not BedrockConfig.AWS_SECRET_KEY:
+            raise ValueError(
+                "AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY deben estar configuradas en .env"
+            )
 
-        self.api_key = os.getenv('GROQ_API_KEY')
-        if not self.api_key:
-            raise ValueError("GROQ_API_KEY no está configurada en .env")
+        self.client = boto3.client(
+            "bedrock-runtime",
+            region_name=BedrockConfig.AWS_REGION,
+            aws_access_key_id=BedrockConfig.AWS_ACCESS_KEY,
+            aws_secret_access_key=BedrockConfig.AWS_SECRET_KEY,
+        )
 
-        self.client = Groq(api_key=self.api_key)
-        self.model = model
+    # ------------------------------------------------------------------
+    # Prompts internos
+    # ------------------------------------------------------------------
 
-    def generate_response(
-        self,
-        query: str,
-        context_documents: List[str],
-        temperature: float = 0.3,
-        max_tokens: int = 850,
-        context_type: str = "docs_only",
-        conversation_history: Optional[List[Tuple[str, str]]] = None
-    ) -> str:
-        """
-        Genera una respuesta usando el contexto RAG
-
-        Args:
-            query: Pregunta del usuario
-            context_documents: Lista de documentos relevantes como contexto
-            temperature: Temperatura para la generación (0-1)
-            max_tokens: Máximo de tokens en la respuesta
-            context_type: Tipo de contexto - 'faq_only', 'faq_and_docs', 'docs_only'
-            conversation_history: Historial de conversación como lista de tuplas (user_msg, assistant_msg)
-
-        Returns:
-            Respuesta generada por Groq
-        """
-        # Construir el prompt RAG
-        context = "\n\n---\n\n".join(context_documents)
-
-        # Seleccionar prompt según tipo de contexto
+    def _build_prompts(
+        self, query: str, context: str, context_type: str
+    ) -> Tuple[str, str]:
         if context_type == "faq_only":
             system_prompt = """Eres el Asistente Virtual de VOAE (Vicerrectoría de Orientación y Asuntos Estudiantiles de la UNAH).
 
@@ -75,12 +52,11 @@ RESTRICCIÓN CRÍTICA:
 - NUNCA omitas ni resumas fechas, listas o datos específicos que aparezcan en la información; inclúyelos completos
 
 Estilo de respuesta:
-- Inicia con un saludo breve y amigable ("¡Hola!", "Claro, te ayudo", etc.)
+- Inicia con un saludo breve y amigable ("¡Hola!", "Claro, te ayudo", etc.) SOLO en el primer mensaje de la conversación, luego responde de forma natural sin saludos repetidos
 - Responde de forma natural, como si conocieras esta información de memoria
 - NUNCA menciones "según el contexto", "basándome en", "en las FAQs", o frases similares
 - Sé conciso pero completo y cálido
-- Siempre di "la VOAE", nunca "VOAE" sola como sujeto
-"""
+- Siempre di "la VOAE", nunca "VOAE" sola como sujeto"""
 
             user_prompt = f"""Preguntas frecuentes oficiales de VOAE:
 
@@ -90,7 +66,7 @@ Pregunta del estudiante:
 {query}
 
 Instrucciones:
-1. Si la pregunta coincide con una FAQ: Responde con un saludo amigable y luego usa exactamente esa información de forma natural
+1. Si la pregunta coincide con una FAQ: Responde de forma amigable y luego usa exactamente esa información de forma natural
 2. Si NO coincide: Di honestamente que no tienes esa información en tus FAQs"""
 
         elif context_type == "faq_and_docs":
@@ -116,8 +92,7 @@ Estilo de respuesta:
 - Responde de forma natural, integrando la información disponible
 - NUNCA menciones "según el contexto", "basándome en", "la información proporcionada", o frases similares
 - Sé claro y organizado en respuestas con múltiples pasos
-- Siempre di "la VOAE", nunca "VOAE" sola como sujeto
-"""
+- Siempre di "la VOAE", nunca "VOAE" sola como sujeto"""
 
             user_prompt = f"""Información oficial de VOAE (FAQs primero, luego documentos):
 
@@ -132,7 +107,7 @@ Instrucciones:
 3. Responde de forma natural integrando la información relevante
 4. Si NO encuentras la respuesta: Di honestamente que no tienes esa información"""
 
-        else:  # docs_only (flujo original)
+        else:  # docs_only
             system_prompt = """Eres el Asistente Virtual de VOAE (Vicerrectoría de Orientación y Asuntos Estudiantiles de la UNAH).
 
 Tu rol es ayudar a los estudiantes con información sobre servicios, trámites y programas universitarios.
@@ -156,8 +131,7 @@ Estilo de respuesta:
 - Responde de forma natural, como si conocieras esta información de tu trabajo en VOAE
 - NUNCA menciones "según el contexto", "basándome en", "la información proporcionada", o frases similares
 - Estructura tus respuestas con claridad cuando sea necesario (pasos numerados, listas, etc.)
-- Siempre di "la VOAE", nunca "VOAE" sola como sujeto
-"""
+- Siempre di "la VOAE", nunca "VOAE" sola como sujeto"""
 
             user_prompt = f"""Información oficial de VOAE que conoces:
 
@@ -171,82 +145,75 @@ Instrucciones:
 2. Si SÍ está: Responde de forma natural y amigable, incluyendo todos los datos específicos (fechas, listas, requisitos, etc.) sin omitir ninguno
 3. Si NO está: Di honestamente que no tienes esa información y recomienda contactar a VOAE directamente"""
 
+        return system_prompt, user_prompt
+
+    # ------------------------------------------------------------------
+    # API pública
+    # ------------------------------------------------------------------
+
+    def generate_response(
+        self,
+        query: str,
+        context_documents: List[str],
+        temperature: float = 0.3,
+        max_tokens: int = 1024,
+        context_type: str = "docs_only",
+        conversation_history: Optional[List[Tuple[str, str]]] = None,
+    ) -> str:
+        context = "\n\n---\n\n".join(context_documents)
+        system_prompt, user_prompt = self._build_prompts(query, context, context_type)
+
+        messages = []
+        if conversation_history:
+            for hist_user, hist_assistant in conversation_history[-5:]:
+                messages.append({"role": "user", "content": hist_user})
+                messages.append({"role": "assistant", "content": hist_assistant})
+        messages.append({"role": "user", "content": user_prompt})
+
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "system": system_prompt,
+            "messages": messages,
+        }
+
         try:
-            # Construir mensajes con historial de conversación
-            messages = [{"role": "system", "content": system_prompt}]
-
-            # Inyectar historial como mensajes alternados user/assistant
-            if conversation_history:
-                for hist_user, hist_assistant in conversation_history[-5:]:
-                    messages.append({"role": "user", "content": hist_user})
-                    messages.append({"role": "assistant", "content": hist_assistant})
-
-            messages.append({"role": "user", "content": user_prompt})
-
-            chat_completion = self.client.chat.completions.create(
-                messages=messages,
-                model=self.model,
-                temperature=temperature,
-                max_tokens=max_tokens
+            response = self.client.invoke_model(
+                modelId=self.model_id,
+                body=json.dumps(body),
+                contentType="application/json",
+                accept="application/json",
             )
-
-            return chat_completion.choices[0].message.content.strip()
-
+            result = json.loads(response["body"].read())
+            return result["content"][0]["text"].strip()
         except Exception as e:
-            raise Exception(f"Error al llamar a la API de Groq: {str(e)}") from e
+            raise Exception(f"Error al llamar a Amazon Bedrock: {str(e)}") from e
 
     def simple_chat(
         self,
         message: str,
         temperature: float = 0.3,
-        max_tokens: int = 500
+        max_tokens: int = 500,
+        system_prompt: str = None,
     ) -> str:
-        """
-        Chat simple sin contexto RAG
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": [{"role": "user", "content": message}],
+        }
+        if system_prompt:
+            body["system"] = system_prompt
 
-        Args:
-            message: Mensaje del usuario
-            temperature: Temperatura para la generación
-            max_tokens: Máximo de tokens
-
-        Returns:
-            Respuesta de Groq
-        """
         try:
-            chat_completion = self.client.chat.completions.create(
-                messages=[
-                    {"role": "user", "content": message}
-                ],
-                model=self.model,
-                temperature=temperature,
-                max_tokens=max_tokens
+            response = self.client.invoke_model(
+                modelId=self.model_id,
+                body=json.dumps(body),
+                contentType="application/json",
+                accept="application/json",
             )
-
-            return chat_completion.choices[0].message.content.strip()
-
+            result = json.loads(response["body"].read())
+            return result["content"][0]["text"].strip()
         except Exception as e:
-            raise Exception(f"Error al llamar a la API de Groq: {str(e)}") from e
-
-
-if __name__ == "__main__":
-    # Test del cliente
-    try:
-        client = GroqClient()
-
-        # Test simple
-        test_query = "¿Qué es Python?"
-        test_context = [
-            "Python es un lenguaje de programación de alto nivel.",
-            "Python fue creado por Guido van Rossum en 1991."
-        ]
-
-        print("Enviando consulta a Groq...")
-        import time
-        start = time.time()
-        response = client.generate_response(test_query, test_context)
-        end = time.time()
-
-        print(f"\nRespuesta (en {(end-start)*1000:.0f}ms):\n{response}")
-
-    except Exception as e:
-        print(f"Error: {str(e)}")
+            raise Exception(f"Error al llamar a Amazon Bedrock: {str(e)}") from e

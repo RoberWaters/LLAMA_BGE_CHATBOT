@@ -54,16 +54,13 @@ class RetrievalConfig:
 # =============================================================================
 
 class EmbeddingConfig:
-    """Configuración del modelo de embeddings"""
+    """Configuración del modelo de embeddings (Amazon Titan Embeddings V2)"""
 
-    # Modelo de embeddings
-    MODEL_NAME = os.getenv('EMBEDDING_MODEL', 'BAAI/bge-m3')
+    # Modelo de embeddings en Bedrock
+    MODEL_NAME = os.getenv('BEDROCK_EMBEDDING_MODEL', 'amazon.titan-embed-text-v2:0')
 
-    # Dimensiones del embedding (BGE-M3)
+    # Dimensiones del embedding (Titan V2 soporta 256 / 512 / 1024)
     EMBEDDING_DIM = int(os.getenv('EMBEDDING_DIM', '1024'))
-
-    # Device para el modelo (cpu, cuda, mps)
-    DEVICE = os.getenv('EMBEDDING_DEVICE', 'cpu')
 
 
 # =============================================================================
@@ -84,27 +81,31 @@ class ChromaDBConfig:
 
 
 # =============================================================================
-# LLM Configuration
+# Amazon Bedrock Configuration (LLM + Embeddings + Transcribe)
 # =============================================================================
 
-class LLMConfig:
-    """Configuración de LLMs"""
+class BedrockConfig:
+    """Configuración de Amazon Bedrock y servicios AWS"""
 
-    # Proveedor por defecto (groq, deepseek)
-    DEFAULT_PROVIDER = os.getenv('LLM_PROVIDER', 'groq')
+    AWS_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+    AWS_REGION     = os.getenv('AWS_REGION', 'us-east-1')
 
-    # Groq Configuration
-    GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-    GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
+    # Modelo LLM (Claude 3.5 Haiku — rápido y económico)
+    LLM_MODEL_ID = os.getenv('BEDROCK_LLM_MODEL', 'us.anthropic.claude-3-5-haiku-20241022-v1:0')
 
-    # DeepSeek Configuration
-    DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
-    DEEPSEEK_MODEL = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat')
+    # Modelo de embeddings (Titan Embeddings V2 — 1024 dims, multilingüe)
+    EMBEDDING_MODEL_ID = os.getenv('BEDROCK_EMBEDDING_MODEL', 'amazon.titan-embed-text-v2:0')
 
     # Parámetros de generación
     DEFAULT_TEMPERATURE = float(os.getenv('LLM_TEMPERATURE', '0.7'))
-    DEFAULT_MAX_TOKENS = int(os.getenv('LLM_MAX_TOKENS', '2000'))
-    MAX_TOKENS_GROQ = int(os.getenv('LLM_MAX_TOKENS_GROQ', '850'))  # Groq tiene límite más bajo
+    DEFAULT_MAX_TOKENS  = int(os.getenv('LLM_MAX_TOKENS', '2000'))
+
+
+# Alias para compatibilidad con código existente
+class LLMConfig:
+    """Alias de BedrockConfig — mantenido para compatibilidad"""
+    DEFAULT_PROVIDER = 'bedrock'
 
 
 # =============================================================================
@@ -168,12 +169,27 @@ class APIConfig:
 
 
 # =============================================================================
+# Amazon S3 Configuration (docs + ChromaDB sync)
+# =============================================================================
+
+class S3Config:
+    """Configuración de Amazon S3 para documentos y sincronización de ChromaDB"""
+    BUCKET_NAME    = os.getenv('S3_BUCKET_NAME', '')
+    DOCS_PREFIX    = os.getenv('S3_DOCS_PREFIX', 'docs/')
+    CHROMA_PREFIX  = os.getenv('S3_CHROMA_PREFIX', 'chroma/')
+    # Reutiliza credenciales de BedrockConfig
+    AWS_REGION     = os.getenv('AWS_REGION', 'us-east-1')
+    AWS_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+
+
+# =============================================================================
 # Amazon Polly TTS Configuration
 # =============================================================================
 
 class PollyConfig:
     """Configuración de Amazon Polly TTS"""
-    AWS_ACCESS_KEY = os.getenv('AWS_ACCES_KEY')        # Typo intencional para compatibilidad
+    AWS_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY_ID')
     AWS_SECRET_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
     AWS_REGION     = os.getenv('AWS_REGION', 'us-east-1')
     VOICE_ID       = os.getenv('POLLY_VOICE', 'Lupe')
@@ -209,8 +225,7 @@ def get_config_summary() -> dict:
         },
         'llm': {
             'default_provider': LLMConfig.DEFAULT_PROVIDER,
-            'groq_model': LLMConfig.GROQ_MODEL,
-            'deepseek_model': LLMConfig.DEEPSEEK_MODEL,
+            'model': BedrockConfig.LLM_MODEL_ID,
         },
         'chromadb': {
             'storage_path': ChromaDBConfig.STORAGE_PATH,
@@ -238,13 +253,9 @@ def validate_config():
     if FAQConfig.MEDIUM_THRESHOLD >= FAQConfig.HIGH_THRESHOLD:
         errors.append(f"FAQ_MEDIUM_THRESHOLD debe ser menor que FAQ_HIGH_THRESHOLD")
 
-    # Validar API keys (al menos una debe existir)
-    if not LLMConfig.GROQ_API_KEY and not LLMConfig.DEEPSEEK_API_KEY:
-        errors.append("Al menos GROQ_API_KEY o DEEPSEEK_API_KEY debe estar configurada")
-
-    # Validar proveedor por defecto
-    if LLMConfig.DEFAULT_PROVIDER not in ['groq', 'deepseek']:
-        errors.append(f"LLM_PROVIDER debe ser 'groq' o 'deepseek', actual: {LLMConfig.DEFAULT_PROVIDER}")
+    # Validar credenciales AWS
+    if not BedrockConfig.AWS_ACCESS_KEY or not BedrockConfig.AWS_SECRET_KEY:
+        errors.append("AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY deben estar configuradas")
 
     if errors:
         raise ValueError(f"Errores de configuración:\n" + "\n".join(f"- {e}" for e in errors))

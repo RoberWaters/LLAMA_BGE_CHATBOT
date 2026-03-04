@@ -5,29 +5,122 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import re
+import unicodedata
 from typing import List, Tuple, Optional
 from rag.rag_pipeline import RAGPipeline
+from config import S3Config
+
+# Frases conversacionales que NO requieren RAG (normalizadas sin acentos)
+_GREETINGS = {
+    "hola", "buenos dias", "buenas tardes", "buenas noches", "buenas",
+    "hey", "ey", "hi", "hello", "que tal", "como estas", "como te va",
+}
+_FAREWELLS = {
+    "adios", "hasta luego", "hasta pronto", "hasta manana", "chao", "chau",
+    "bye", "nos vemos", "que te vaya bien",
+}
+_THANKS = {
+    "gracias", "muchas gracias", "mil gracias", "te lo agradezco",
+    "muy amable", "gracias por todo", "ok gracias", "perfecto gracias",
+}
+_ACKS = {
+    "ok", "okay", "de acuerdo", "entendido", "perfecto", "genial",
+    "listo", "esta bien", "muy bien", "excelente", "claro", "bien",
+}
+
+
+def _normalize(text: str) -> str:
+    """Lowercase, elimina puntuación y normaliza acentos."""
+    text = text.strip().lower()
+    text = re.sub(r"[.!¡¿?,;:]+", "", text).strip()
+    # Quitar diacríticos (acentos)
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    return text
+
+_CONVERSATIONAL_SYSTEM_PROMPT = """Eres el Asistente Virtual de VOAE (Vicerrectoría de Orientación y Asuntos Estudiantiles de la UNAH).
+
+Eres cercano, cálido y natural. Respondes de forma breve y humana a mensajes conversacionales como saludos, despedidas y agradecimientos.
+
+Reglas:
+- Responde de forma corta y amigable (1-2 oraciones máximo)
+- Usa el "tú" para crear cercanía
+- Si es un saludo, saluda de vuelta y ofrece ayuda con los servicios de la VOAE
+- Si es una despedida, despídete amablemente
+- Si es un agradecimiento, responde con calidez
+- Si es un simple "ok" o "entendido", reconócelo brevemente
+- NO menciones que eres un bot o asistente virtual de manera robótica
+- NO incluyas listas ni información técnica"""
 
 
 class RAGChatbot:
     """Chatbot con historial de conversación y sistema RAG"""
 
-    def __init__(self, docs_folder: str = "data/docs", max_history: int = 5, llm_provider: str = "groq"):
+    def __init__(
+        self,
+        s3_bucket: str = None,
+        s3_prefix: str = None,
+        max_history: int = 5,
+        llm_provider: str = "bedrock"
+    ):
         """
-        Inicializa el chatbot con ChromaDB
+        Inicializa el chatbot con ChromaDB.
 
         Args:
-            docs_folder: Carpeta con documentos
+            s3_bucket: Nombre del bucket S3 (default: S3Config.BUCKET_NAME)
+            s3_prefix: Prefijo S3 para documentos (default: S3Config.DOCS_PREFIX)
             max_history: Número máximo de mensajes a recordar en el historial
-            llm_provider: Proveedor de LLM ("groq" o "deepseek")
+            llm_provider: Proveedor de LLM ("bedrock")
         """
-        self.pipeline = RAGPipeline(docs_folder, llm_provider=llm_provider)
+        if s3_bucket is None:
+            s3_bucket = S3Config.BUCKET_NAME
+        if s3_prefix is None:
+            s3_prefix = S3Config.DOCS_PREFIX
+
+        self.pipeline = RAGPipeline(s3_bucket=s3_bucket, s3_prefix=s3_prefix, llm_provider=llm_provider)
         self.max_history = max_history
         self.conversation_history: List[Tuple[str, str]] = []
         # Tipo de match por turno ('high'|'medium'|'low'|'none').
         # Los turnos con match_type=='none' indican que no hubo docs relevantes
         # y la respuesta puede ser una alucinación; se excluyen del contexto LLM.
         self._history_confidence: List[str] = []
+
+    def _detect_conversational_type(self, message: str) -> Optional[str]:
+        """Detecta si el mensaje es conversacional. Retorna 'greeting', 'farewell', 'thanks', 'ack' o None."""
+        msg = _normalize(message)
+        if msg in _GREETINGS:
+            return "greeting"
+        if msg in _FAREWELLS:
+            return "farewell"
+        if msg in _THANKS:
+            return "thanks"
+        if msg in _ACKS:
+            return "ack"
+        return None
+
+    def _handle_conversational(self, message: str, conv_type: str, temperature: float) -> dict:
+        """Genera una respuesta humana para mensajes conversacionales sin RAG."""
+        try:
+            answer = self.pipeline.llm_client.simple_chat(
+                message=message,
+                temperature=max(temperature, 0.7),  # más natural con temperatura alta
+                max_tokens=150,
+                system_prompt=_CONVERSATIONAL_SYSTEM_PROMPT,
+            )
+            return {
+                "answer": answer,
+                "relevant_documents": [],
+                "match_type": "conversational",
+                "error": None,
+            }
+        except Exception as e:
+            return {
+                "answer": "¡Hola! ¿En qué puedo ayudarte hoy?",
+                "relevant_documents": [],
+                "match_type": "conversational",
+                "error": str(e),
+            }
 
     def _format_history_for_llm(self) -> str:
         """
@@ -71,6 +164,18 @@ class RAGChatbot:
                 "relevant_documents": [],
                 "error": "Empty message"
             }
+
+        # Detectar mensajes conversacionales (saludos, despedidas, agradecimientos)
+        conv_type = self._detect_conversational_type(user_message)
+        if conv_type:
+            result = self._handle_conversational(user_message, conv_type, temperature)
+            if not result.get("error"):
+                self.conversation_history.append((user_message, result["answer"]))
+                self._history_confidence.append("conversational")
+                if len(self.conversation_history) > self.max_history:
+                    self.conversation_history = self.conversation_history[-self.max_history:]
+                    self._history_confidence = self._history_confidence[-self.max_history:]
+            return result
 
         # Si usa RAG, hacer consulta con sistema FAQ híbrido
         if use_rag:

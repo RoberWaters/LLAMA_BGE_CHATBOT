@@ -11,47 +11,52 @@ from embeddings.embedder import Embedder
 from database.chroma_vector_store import ChromaVectorStore
 from database.repository import DocumentRepository
 from ingestion.ingest_docs import DocumentIngestion
-from llm.deepseek_client import DeepSeekClient
-from llm.groq_client import GroqClient
+from llm.bedrock_client import BedrockClient
 from rag.retriever import DocumentRetriever
 from rag.faq_handler import FAQHandler
-from config import RetrievalConfig
+from config import RetrievalConfig, S3Config, ChromaDBConfig
+from database import s3_sync
 
 
 class RAGPipeline:
     """Pipeline completo para el sistema RAG"""
 
-    def __init__(self, docs_folder: str = "data/docs", llm_provider: str = "groq"):
+    def __init__(self, s3_bucket: str = None, s3_prefix: str = None, llm_provider: str = "bedrock"):
         """
-        Inicializa el pipeline RAG con ChromaDB
+        Inicializa el pipeline RAG con ChromaDB.
 
         Args:
-            docs_folder: Carpeta con los documentos markdown
-            llm_provider: Proveedor de LLM ("groq" o "deepseek")
+            s3_bucket: Nombre del bucket S3 (default: S3Config.BUCKET_NAME)
+            s3_prefix: Prefijo S3 para documentos (default: S3Config.DOCS_PREFIX)
+            llm_provider: Proveedor de LLM ("bedrock")
         """
         print("Inicializando pipeline RAG...")
+
+        self.s3_bucket = s3_bucket if s3_bucket is not None else S3Config.BUCKET_NAME
+        self.s3_prefix = s3_prefix if s3_prefix is not None else S3Config.DOCS_PREFIX
+
+        # Descargar ChromaDB desde S3 si es necesario (antes de inicializar ChromaVectorStore)
+        if self.s3_bucket:
+            s3_sync.download_chroma(self.s3_bucket, S3Config.CHROMA_PREFIX, ChromaDBConfig.STORAGE_PATH)
 
         # Inicializar componentes
         self.embedder = Embedder()
         self.storage = ChromaVectorStore()
         self.storage_type = "chroma"
-        print("🔷 Usando ChromaDB para almacenamiento vectorial")
+        print("[ChromaDB] Usando ChromaDB para almacenamiento vectorial")
 
         self.repository = DocumentRepository(self.storage)
-        self.ingestion = DocumentIngestion(docs_folder)
+        self.ingestion = DocumentIngestion(s3_bucket=self.s3_bucket, s3_prefix=self.s3_prefix)
         self.retriever = DocumentRetriever(self.repository, self.embedder, self.storage)
         self.faq_handler = FAQHandler(self.repository, self.embedder)
 
-        # Inicializar LLM según el proveedor
+        # Inicializar LLM
         self.llm_provider = llm_provider.lower()
-        if self.llm_provider == "groq":
-            self.llm_client = GroqClient(model="llama-3.3-70b-versatile")
-            print("✨ Usando Groq API con Llama 3.3 70B (ultra-rápido)")
-        elif self.llm_provider == "deepseek":
-            self.llm_client = DeepSeekClient()
-            print("🔷 Usando DeepSeek API")
+        if self.llm_provider == "bedrock":
+            self.llm_client = BedrockClient()
+            print("[Bedrock] Usando Amazon Bedrock (Claude 3.5 Haiku)")
         else:
-            raise ValueError(f"LLM provider no soportado: {llm_provider}. Usa 'groq' o 'deepseek'")
+            raise ValueError(f"LLM provider no soportado: {llm_provider}. Usa 'bedrock'")
 
         print("Pipeline RAG inicializado exitosamente\n")
 
@@ -81,13 +86,13 @@ class RAGPipeline:
         for filename, content in documents:
             # Verificar si ya existe
             if skip_existing and self.repository.document_exists(filename):
-                print(f"⏭️  Saltando '{filename}' (ya existe)")
+                print(f"Saltando '{filename}' (ya existe)")
                 skipped_count += 1
                 continue
 
             try:
                 # Generar embedding
-                print(f"\n📝 Procesando: {filename}")
+                print(f"\nProcesando: {filename}")
                 embedding = self.embedder.generate_embedding(content)
 
                 # Convertir a bytes
@@ -98,7 +103,7 @@ class RAGPipeline:
                 processed_count += 1
 
             except Exception as e:
-                print(f"❌ Error procesando {filename}: {str(e)}")
+                print(f"ERROR: Error procesando {filename}: {str(e)}")
                 continue
 
         print("\n" + "=" * 60)
@@ -107,6 +112,10 @@ class RAGPipeline:
         print(f"Documentos saltados: {skipped_count}")
         print(f"Total en base de datos: {self.repository.count_documents()}")
         print("=" * 60)
+
+        # Subir ChromaDB actualizado a S3
+        if self.s3_bucket:
+            s3_sync.upload_chroma(ChromaDBConfig.STORAGE_PATH, self.s3_bucket, S3Config.CHROMA_PREFIX)
 
     def query_with_faq(
         self,
@@ -170,7 +179,7 @@ class RAGPipeline:
 
         # PASO 1: Clasificar la consulta según FAQs
         if enable_faq and self.faq_handler.should_use_faq(question):
-            print("\n🔍 Buscando en FAQs...")
+            print("\nBuscando en FAQs...")
             faq_classification = self.faq_handler.classify_query(search_query, top_k=5)
             match_type = faq_classification['match_type']
             faq_results = faq_classification['faq_results']
@@ -182,12 +191,12 @@ class RAGPipeline:
             match_type = 'low'
             faq_results = []
             best_similarity = 0.0
-            print("\n⏭️  Saltando búsqueda en FAQs (disabled o comando especial)")
+            print("\nSaltando búsqueda en FAQs (disabled o comando especial)")
 
         # PASO 2: Obtener documentos si es necesario (EXCLUIR FAQs)
         doc_results = []
         if match_type in ['medium', 'low']:
-            print(f"\n📄 Buscando en documentos generales (top-{top_k})...")
+            print(f"\nBuscando en documentos generales (top-{top_k})...")
             all_docs = self.retriever.retrieve_relevant_documents(
                 query=search_query,
                 top_k=top_k * 2  # Buscar más para compensar filtrado
@@ -223,9 +232,9 @@ class RAGPipeline:
         # PASO 4: Ajustar temperatura según contexto
         adjusted_temperature = self.faq_handler.get_temperature_for_context(context_type)
 
-        print(f"\n🎯 Tipo de contexto: {context_type}")
-        print(f"🌡️  Temperature ajustada: {adjusted_temperature}")
-        print(f"\n🤖 Generando respuesta con {self.llm_provider.upper()}...\n")
+        print(f"\nTipo de contexto: {context_type}")
+        print(f"Temperature ajustada: {adjusted_temperature}")
+        print(f"\nGenerando respuesta con {self.llm_provider.upper()}...\n")
 
         # PASO 5: Generar respuesta con LLM
         try:
@@ -276,7 +285,7 @@ class RAGPipeline:
 
         except Exception as e:
             error_msg = f"Error al generar respuesta: {str(e)}"
-            print(f"❌ {error_msg}")
+            print(f"ERROR: {error_msg}")
 
             return {
                 "answer": "Ocurrió un error al generar la respuesta.",
@@ -337,7 +346,7 @@ class RAGPipeline:
         context_documents = [content for _, content, _ in relevant_docs]
 
         # Generar respuesta con DeepSeek
-        print("\n🤖 Generando respuesta con DeepSeek...\n")
+        print("\nGenerando respuesta con DeepSeek...\n")
 
         try:
             answer = self.llm_client.generate_response(
@@ -366,7 +375,7 @@ class RAGPipeline:
 
         except Exception as e:
             error_msg = f"Error al generar respuesta: {str(e)}"
-            print(f"❌ {error_msg}")
+            print(f"ERROR: {error_msg}")
 
             return {
                 "answer": "Ocurrió un error al generar la respuesta.",
@@ -396,7 +405,7 @@ class RAGPipeline:
         stats = {
             "total_documents": self.repository.count_documents(),
             "storage_type": self.storage_type,
-            "embedder_model": "BAAI/bge-m3",
+            "embedder_model": self.embedder.model_name,
             "llm_model": self.llm_client.model
         }
 

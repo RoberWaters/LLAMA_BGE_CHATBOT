@@ -9,12 +9,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from rag.rag_pipeline import RAGPipeline
+from config import S3Config
 
 
 def print_banner():
     """Imprime el banner del sistema"""
     print("\n" + "=" * 60)
-    print("  SISTEMA RAG - BGE-M3 + Groq/DeepSeek")
+    print("  SISTEMA RAG - Amazon Bedrock (Claude + Titan)")
     print("=" * 60 + "\n")
 
 
@@ -34,7 +35,7 @@ def ingest_mode(pipeline: RAGPipeline, args):
             skip_existing=not args.force
         )
     except Exception as e:
-        print(f"\n❌ Error durante la ingestion: {str(e)}")
+        print(f"\nERROR: Error durante la ingestion: {str(e)}")
         sys.exit(1)
 
 
@@ -101,7 +102,7 @@ def query_mode(pipeline: RAGPipeline, args):
                 print("\n\n¡Hasta luego!")
                 break
             except Exception as e:
-                print(f"\n❌ Error: {str(e)}")
+                print(f"\nERROR: Error: {str(e)}")
 
 
 def stats_mode(pipeline: RAGPipeline):
@@ -193,8 +194,12 @@ Ejemplos de uso:
                         help='Muestra las fuentes consultadas')
 
     # Opciones de sistema
-    parser.add_argument('--llm-provider', type=str, default='groq', choices=['groq', 'deepseek'],
-                        help='Proveedor de LLM: groq o deepseek (default: groq)')
+    parser.add_argument('--llm-provider', type=str, default='bedrock', choices=['bedrock'],
+                        help='Proveedor de LLM (default: bedrock)')
+    parser.add_argument('--s3-bucket', type=str, default=None,
+                        help=f'Bucket S3 con documentos y ChromaDB (default: S3Config.BUCKET_NAME)')
+    parser.add_argument('--s3-prefix', type=str, default=None,
+                        help=f'Prefijo S3 para documentos .md (default: S3Config.DOCS_PREFIX)')
 
     args = parser.parse_args()
 
@@ -203,9 +208,13 @@ Ejemplos de uso:
 
     # Inicializar pipeline
     try:
-        pipeline = RAGPipeline(llm_provider=args.llm_provider)
+        pipeline = RAGPipeline(
+            s3_bucket=args.s3_bucket,
+            s3_prefix=args.s3_prefix,
+            llm_provider=args.llm_provider,
+        )
     except Exception as e:
-        print(f"❌ Error al inicializar el pipeline: {str(e)}")
+        print(f"ERROR: Error al inicializar el pipeline: {str(e)}")
         print("\nVerifica que:")
         print("  1. El archivo .env existe y tiene todas las variables")
         print("  2. SQL Server está accesible")
@@ -228,7 +237,7 @@ Ejemplos de uso:
             query_mode(pipeline, args)
 
     except Exception as e:
-        print(f"\n❌ Error: {str(e)}")
+        print(f"\nERROR: Error: {str(e)}")
         sys.exit(1)
 
     finally:

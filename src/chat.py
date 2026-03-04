@@ -18,8 +18,8 @@ def main():
     """Función principal del chatbot"""
     # Parse argumentos
     parser = argparse.ArgumentParser(description="Chatbot RAG interactivo")
-    parser.add_argument('--llm-provider', type=str, default='groq', choices=['groq', 'deepseek'],
-                        help='Proveedor de LLM: groq o deepseek (default: groq)')
+    parser.add_argument('--llm-provider', type=str, default='bedrock', choices=['bedrock'],
+                        help='Proveedor de LLM (default: bedrock)')
     args = parser.parse_args()
 
     print_separator()

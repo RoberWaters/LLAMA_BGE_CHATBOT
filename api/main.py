@@ -29,7 +29,7 @@ from datetime import datetime
 
 from chatbot.chatbot import RAGChatbot
 
-from llm.transcription_client import TranscriptionClient
+from llm.transcribe_client import TranscribeClient
 from llm.polly_client import PollyClient
 
 # Inicializar FastAPI
@@ -54,13 +54,25 @@ chat_sessions = {}  # {session_id: chatbot_instance}
 session_llm_providers = {}  # {session_id: llm_provider}
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Descarga ChromaDB desde S3 al iniciar la API (si S3 está configurado)."""
+    from config import S3Config, ChromaDBConfig
+    from database import s3_sync
+    if S3Config.BUCKET_NAME:
+        print(f"[Startup] Sincronizando ChromaDB desde s3://{S3Config.BUCKET_NAME}/{S3Config.CHROMA_PREFIX}")
+        s3_sync.download_chroma(S3Config.BUCKET_NAME, S3Config.CHROMA_PREFIX, ChromaDBConfig.STORAGE_PATH)
+    else:
+        print("[Startup] S3_BUCKET_NAME no configurado, usando ChromaDB local")
+
+
 transcription_client = None
 
 def get_transcription_client():
     """Obtiene o crea el cliente de transcripción"""
     global transcription_client
     if transcription_client is None:
-        transcription_client = TranscriptionClient()
+        transcription_client = TranscribeClient()
     return transcription_client
 
 
@@ -80,7 +92,7 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = "default"
     top_k: Optional[int] = 4
     temperature: Optional[float] = 0.7
-    llm_provider: Optional[str] = None  # "groq" o "deepseek"
+    llm_provider: Optional[str] = None  # "bedrock"
 
 
 class ChatResponse(BaseModel):
@@ -110,7 +122,7 @@ class HistoryResponse(BaseModel):
 
 class ModelChangeRequest(BaseModel):
     session_id: Optional[str] = "default"
-    llm_provider: str  # "groq" o "deepseek"
+    llm_provider: str  # "bedrock"
 
 class TranscriptionResponse(BaseModel):
     text: Optional[str] = None
@@ -130,7 +142,7 @@ def get_chatbot(session_id: str = "default", llm_provider: str = None) -> RAGCha
     """Obtiene o crea una instancia del chatbot para la sesión"""
     # Si no se especifica proveedor, usar el guardado o default
     if llm_provider is None:
-        llm_provider = session_llm_providers.get(session_id, "groq")
+        llm_provider = session_llm_providers.get(session_id, "bedrock")
 
     # Si no existe el chatbot o cambió el proveedor, recrear
     if session_id not in chat_sessions or session_llm_providers.get(session_id) != llm_provider:
@@ -220,7 +232,7 @@ async def get_stats(session_id: str = "default"):
         stats = chatbot.get_stats()
 
         # Obtener el proveedor actual de la sesión
-        current_provider = session_llm_providers.get(session_id, "groq")
+        current_provider = session_llm_providers.get(session_id, "bedrock")
 
         return StatsResponse(
             total_documents=stats["total_documents"],
@@ -335,48 +347,31 @@ async def list_sessions():
 @app.post("/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(audio: UploadFile = File(...), language: str = "es"):
     """
-    Transcribe audio a texto usando Groq Whisper
-
-    Optimizations:
-    - Pre-initialized transcription client (no cold start)
-    - Async file reading
-    - Direct bytes processing (no temp file)
+    Transcribe audio a texto usando Amazon Transcribe Streaming.
 
     Args:
-        audio: Archivo de audio (wav, mp3, webm, etc.)
+        audio: Archivo de audio (wav, webm/opus del navegador, etc.)
         language: Código de idioma (default: "es" para español)
 
     Returns:
         TranscriptionResponse con el texto transcrito
     """
-    
     try:
-        # Read audio bytes asynchronously (faster)
         audio_bytes = await audio.read()
 
-        # Descartar audio demasiado corto — Whisper alucina con silencio/ruido
-        # 500 bytes es ~15ms a 256kbps, insuficiente para contener voz real
         if not audio_bytes or len(audio_bytes) < 500:
             return TranscriptionResponse(
                 text=None,
                 timestamp=datetime.now().isoformat()
             )
 
-        # Get pre-initialized transcription client (no initialization delay)
         client = get_transcription_client()
 
-        # Transcribe audio - Groq's LPU makes this very fast
-        text = client.transcribe_audio_bytes(
+        text = await client.transcribe_audio_bytes(
             audio_bytes=audio_bytes,
             filename=audio.filename or "audio.webm",
             language=language,
         )
-
-        if text is None:
-            return TranscriptionResponse(
-                text=None,
-                timestamp=datetime.now().isoformat()
-            )
 
         return TranscriptionResponse(
             text=text,
@@ -424,12 +419,11 @@ def split_sentences(text: str) -> list:
 @app.post("/chat-stream")
 async def chat_stream(request: ChatRequest):
     """
-    Endpoint SSE: procesa el mensaje RAG y devuelve oraciones con audio PCM
-    para animación en tiempo real con Simli.
+    Endpoint SSE: procesa el mensaje RAG y devuelve oraciones con audio MP3.
 
     Eventos SSE:
       - type: "meta"  → metadata de la respuesta (match_type, sources, etc.)
-      - type: "chunk" → { text, audio_base64 } por cada oración
+      - type: "chunk" → { text, audio_base64 } por cada oración (MP3 base64)
       - type: "done"  → fin del stream
       - type: "error" → mensaje de error
     """
@@ -464,11 +458,12 @@ async def chat_stream(request: ChatRequest):
                 tts_text = preprocess_text_for_tts(sentence)
                 if not tts_text:
                     continue
-                audio_b64 = polly.synthesize(tts_text)
+                tts_result = polly.synthesize_with_visemes(tts_text)
                 chunk = {
                     "type": "chunk",
                     "text": sentence,
-                    "audio_base64": audio_b64,
+                    "audio_base64": tts_result["audio_base64"],
+                    "visemes": tts_result["visemes"],
                 }
                 yield f"data: {json.dumps(chunk)}\n\n"
                 await asyncio.sleep(0)
@@ -477,7 +472,7 @@ async def chat_stream(request: ChatRequest):
 
         except Exception as e:
             import traceback
-            print(f"❌ Error en /chat-stream: {traceback.format_exc()}")
+            print(f"[ERROR] /chat-stream: {traceback.format_exc()}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(
@@ -503,10 +498,10 @@ async def change_model(request: ModelChangeRequest):
     """
     try:
         # Validar proveedor
-        if request.llm_provider not in ["groq", "deepseek"]:
+        if request.llm_provider not in ["bedrock"]:
             raise HTTPException(
                 status_code=400,
-                detail="Proveedor inválido. Usa 'groq' o 'deepseek'"
+                detail="Proveedor inválido. Usa 'bedrock'"
             )
 
         # Forzar recreación del chatbot con nuevo proveedor
@@ -583,7 +578,7 @@ async def ws_transcribe(websocket: WebSocket):
                     text = None
                     if pcm_buffer:
                         wav_data = _float32_to_wav(bytes(pcm_buffer))
-                        text = client.transcribe_audio_bytes(wav_data, 'audio.wav', 'es')
+                        text = await client.transcribe_audio_bytes(wav_data, 'audio.wav', 'es')
                     await websocket.send_text(json.dumps({'text': text or ''}))
                     break
 

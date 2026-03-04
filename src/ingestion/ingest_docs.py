@@ -1,62 +1,63 @@
 """
-Módulo para cargar y procesar documentos markdown
+Módulo para cargar y procesar documentos markdown desde Amazon S3
 """
-import os
+import sys
 import re
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from typing import List, Tuple
+
+from config import S3Config
+from database import s3_sync
 
 
 class DocumentIngestion:
-    """Clase para cargar y procesar documentos markdown"""
+    """Clase para cargar y procesar documentos markdown desde S3"""
 
-    def __init__(self, docs_folder: str = "data/docs"):
+    def __init__(self, s3_bucket: str = None, s3_prefix: str = None):
         """
-        Inicializa el módulo de ingestion
+        Inicializa el módulo de ingestion.
 
         Args:
-            docs_folder: Ruta a la carpeta con archivos .md
+            s3_bucket: Nombre del bucket S3 (default: S3Config.BUCKET_NAME)
+            s3_prefix: Prefijo en S3 donde viven los .md (default: S3Config.DOCS_PREFIX)
         """
-        self.docs_folder = docs_folder
-        self._validate_folder()
+        self.s3_bucket = s3_bucket if s3_bucket is not None else S3Config.BUCKET_NAME
+        self.s3_prefix = s3_prefix if s3_prefix is not None else S3Config.DOCS_PREFIX
 
-    def _validate_folder(self):
-        """Valida que la carpeta de documentos exista"""
-        if not os.path.exists(self.docs_folder):
-            raise FileNotFoundError(
-                f"La carpeta {self.docs_folder} no existe. "
-                f"Por favor créala y coloca archivos .md en ella."
+        if not self.s3_bucket:
+            raise ValueError(
+                "S3_BUCKET_NAME no está configurado. "
+                "Defínelo en .env o pasa s3_bucket al constructor."
             )
 
     def load_markdown_files(self) -> List[Tuple[str, str]]:
         """
-        Carga todos los archivos markdown de la carpeta
+        Carga todos los archivos markdown desde S3.
 
         Returns:
-            Lista de tuplas (filename, content)
+            Lista de tuplas (filename, content) donde filename es relativo al prefix
         """
-        markdown_files = []
-        docs_path = Path(self.docs_folder)
+        keys = s3_sync.list_docs(self.s3_bucket, self.s3_prefix)
 
-        # Buscar archivos .md y .MD recursivamente (incluye subdirectorios)
-        md_files = list(docs_path.glob("**/*.md")) + list(docs_path.glob("**/*.MD"))
-
-        if not md_files:
-            print(f"Advertencia: No se encontraron archivos .md o .MD en {self.docs_folder}")
+        if not keys:
+            print(f"Advertencia: No se encontraron archivos .md en s3://{self.s3_bucket}/{self.s3_prefix}")
             return []
 
-        for file_path in md_files:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
+        markdown_files = []
+        # Normalizar el prefijo para derivar el filename relativo
+        prefix = self.s3_prefix.rstrip('/')
 
-                # Usar ruta relativa desde docs_folder para preservar estructura
-                filename = str(file_path.relative_to(docs_path))
+        for key in keys:
+            try:
+                content = s3_sync.read_doc(self.s3_bucket, key)
+                # Derivar ruta relativa al prefix (ej: docs/faq/file.md → faq/file.md)
+                filename = key[len(prefix):].lstrip('/')
                 markdown_files.append((filename, content))
                 print(f"Cargado: {filename}")
-
             except Exception as e:
-                print(f"Error al cargar {file_path.name}: {str(e)}")
+                print(f"Error al cargar {key}: {str(e)}")
                 continue
 
         print(f"Total de archivos cargados: {len(markdown_files)}")
@@ -160,6 +161,7 @@ if __name__ == "__main__":
     try:
         ingestion = DocumentIngestion()
         documents = ingestion.process_documents()
+
 
         for filename, content in documents[:2]:  # Mostrar primeros 2
             print(f"\n--- {filename} ---")

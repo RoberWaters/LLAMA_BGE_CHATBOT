@@ -1,15 +1,16 @@
 python-dotenv
-sentence-transformers
-transformers
-accelerate
 numpy
-requests
-groq
 chromadb
+
+# AWS SDK
+boto3
+amazon-transcribe  # Amazon Transcribe Streaming (STT)
+
+# Audio conversion: usa ffmpeg directamente vía subprocess (sin pydub)
+# Requiere ffmpeg instalado: winget install Gyan.FFmpeg
 
 # FastAPI y servidor
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
 python-multipart>=0.0.6  # Required for file uploads
-boto3

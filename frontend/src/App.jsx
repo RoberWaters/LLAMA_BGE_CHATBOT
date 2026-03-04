@@ -14,7 +14,7 @@ import './App.css';
 
 // Components
 import Microphone from './components/Microphone.jsx';
-import SimliAvatar from './components/SimliAvatar.jsx';
+import VoaeAvatar from './components/VoaeAvatar.jsx';
 import transcribe from './services/speechToText.mjs';
 
 
@@ -29,7 +29,7 @@ function App() {
   const [stats, setStats] = useState(null);
 
   const [showStats, setShowStats] = useState(false);
-  const [llmProvider, setLlmProvider] = useState('groq'); // 'groq' o 'deepseek'
+  const [llmProvider, setLlmProvider] = useState('bedrock');
   const [isChangingModel, setIsChangingModel] = useState(false);
   const messagesEndRef = useRef(null);
   const sessionId = useRef(`session-${Date.now()}`);
@@ -172,8 +172,8 @@ function App() {
               };
               return arr;
             });
-            // Enviar audio PCM al avatar Simli
-            avatarRef.current?.speak(data.audio_base64);
+            // Enviar audio + visemas al avatar
+            avatarRef.current?.speak(data.audio_base64, data.visemes || []);
           } else if (data.type === 'done') {
             setIsLoading(false);
           } else if (data.type === 'error') {
@@ -222,7 +222,7 @@ function App() {
       // Mensaje de confirmación en el chat
       const confirmationMessage = {
         role: 'system',
-        content: `Modelo cambiado a ${newProvider === 'groq' ? 'Groq (Llama 3.3 70B)' : 'DeepSeek'}. El historial se mantiene.`,
+        content: `Modelo cambiado a Amazon Bedrock (Claude 3.5 Haiku). El historial se mantiene.`,
         timestamp: new Date().toLocaleTimeString()
       };
       setMessages(prev => [...prev, confirmationMessage]);
@@ -270,7 +270,7 @@ function App() {
   return (
     <div className="app-container">
       <div className="avatar-panel">
-        <SimliAvatar ref={avatarRef} />
+        <VoaeAvatar ref={avatarRef} />
       </div>
       <div className="chat-container">
         {/* Header */}
@@ -288,18 +288,11 @@ function App() {
               </div>
             </div>
             <div className="header-actions">
-              {/* Selector de Modelo */}
+              {/* Indicador de modelo */}
               <div className="model-selector">
-                <select
-                  value={llmProvider}
-                  onChange={(e) => changeModel(e.target.value)}
-                  disabled={isChangingModel || isLoading}
-                  className="model-select"
-                  title="Cambiar modelo LLM"
-                >
-                  <option value="groq">Groq (Llama 3.3 70B)</option>
-                  <option value="deepseek">DeepSeek</option>
-                </select>
+                <span className="model-badge" title="Modelo LLM activo">
+                  Amazon Bedrock
+                </span>
               </div>
 
               <button
@@ -328,7 +321,7 @@ function App() {
               </div>
               <div className="stat-item">
                 <span className="stat-label">Proveedor:</span>
-                <span className="stat-value">{stats.llm_provider === 'groq' ? 'Groq' : 'DeepSeek'}</span>
+                <span className="stat-value">Amazon Bedrock</span>
               </div>
               <div className="stat-item">
                 <span className="stat-label">Modelo:</span>

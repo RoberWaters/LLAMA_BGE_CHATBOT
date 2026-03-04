@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Avatar Demo — VOAE Chatbot</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', sans-serif;
+      color: #e2e8f0;
+      gap: 32px;
+    }
+
+    h1 { font-size: 1.4rem; color: #94a3b8; letter-spacing: 1px; }
+
+    /* ── Tarjeta del avatar ── */
+    .avatar-card {
+      background: linear-gradient(145deg, #1e293b, #0f172a);
+      border: 1px solid #334155;
+      border-radius: 24px;
+      padding: 40px 48px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      box-shadow: 0 0 60px rgba(99,102,241,0.15);
+    }
+
+    /* ── Avatar SVG ── */
+    .avatar-wrapper {
+      position: relative;
+      width: 200px;
+      height: 200px;
+    }
+
+    /* Círculo de brillo exterior */
+    .avatar-glow {
+      position: absolute;
+      inset: -10px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(99,102,241,0.3) 0%, transparent 70%);
+      animation: pulse-glow 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.6; transform: scale(1); }
+      50%       { opacity: 1;   transform: scale(1.05); }
+    }
+
+    #avatar-svg {
+      width: 200px;
+      height: 200px;
+      filter: drop-shadow(0 4px 16px rgba(99,102,241,0.4));
+    }
+
+    /* Ondas de audio bajo el avatar */
+    .audio-bars {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 32px;
+    }
+
+    .bar {
+      width: 6px;
+      border-radius: 3px;
+      background: #6366f1;
+      transform-origin: bottom;
+      animation: bar-bounce 0.8s ease-in-out infinite;
+    }
+
+    .bar:nth-child(1) { animation-delay: 0.0s; }
+    .bar:nth-child(2) { animation-delay: 0.1s; }
+    .bar:nth-child(3) { animation-delay: 0.2s; }
+    .bar:nth-child(4) { animation-delay: 0.3s; }
+    .bar:nth-child(5) { animation-delay: 0.2s; }
+    .bar:nth-child(6) { animation-delay: 0.1s; }
+    .bar:nth-child(7) { animation-delay: 0.0s; }
+
+    @keyframes bar-bounce {
+      0%, 100% { height: 6px;  opacity: 0.4; }
+      50%       { height: 28px; opacity: 1;   }
+    }
+
+    .audio-bars.idle .bar {
+      animation: none;
+      height: 6px;
+      opacity: 0.2;
+    }
+
+    /* Subtítulo de estado */
+    .status {
+      font-size: 0.85rem;
+      color: #64748b;
+      letter-spacing: 0.5px;
+      min-height: 1.2em;
+    }
+
+    /* ── Controles ── */
+    .controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      padding: 10px 22px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .btn-speak {
+      background: #6366f1;
+      color: white;
+    }
+    .btn-speak:hover { background: #4f46e5; transform: translateY(-1px); }
+
+    .btn-outline {
+      background: transparent;
+      color: #94a3b8;
+      border: 1px solid #334155;
+    }
+    .btn-outline:hover { background: #1e293b; color: #e2e8f0; }
+
+    /* ── Panel de visemas ── */
+    .viseme-panel {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 20px 28px;
+      width: 480px;
+      max-width: 90vw;
+    }
+
+    .viseme-panel h3 {
+      font-size: 0.8rem;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+    }
+
+    .viseme-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+    }
+
+    .viseme-btn {
+      aspect-ratio: 1;
+      border-radius: 10px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      font-size: 0.65rem;
+      color: #64748b;
+      transition: all 0.15s;
+      padding: 6px;
+    }
+
+    .viseme-btn:hover, .viseme-btn.active {
+      background: #6366f1;
+      border-color: #6366f1;
+      color: white;
+    }
+
+    .viseme-mini {
+      width: 32px;
+      height: 22px;
+    }
+
+    .note {
+      font-size: 0.75rem;
+      color: #475569;
+      text-align: center;
+      max-width: 480px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>VOAE · Avatar Demo</h1>
+
+  <div class="avatar-card">
+    <div class="avatar-wrapper">
+      <div class="avatar-glow"></div>
+      <svg id="avatar-svg" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="skinGrad" cx="50%" cy="40%">
+            <stop offset="0%" stop-color="#fcd9b6"/>
+            <stop offset="100%" stop-color="#f5a76c"/>
+          </radialGradient>
+          <radialGradient id="bgGrad" cx="50%" cy="50%">
+            <stop offset="0%" stop-color="#312e81"/>
+            <stop offset="100%" stop-color="#1e1b4b"/>
+          </radialGradient>
+          <clipPath id="faceClip">
+            <ellipse cx="100" cy="105" rx="62" ry="72"/>
+          </clipPath>
+        </defs>
+
+        <!-- Fondo círculo -->
+        <circle cx="100" cy="100" r="98" fill="url(#bgGrad)" stroke="#6366f1" stroke-width="2"/>
+
+        <!-- Cuello -->
+        <rect x="82" y="158" width="36" height="30" rx="8" fill="url(#skinGrad)"/>
+
+        <!-- Camisa / uniforme -->
+        <path d="M 40 200 Q 40 168 68 162 L 82 168 Q 100 178 118 168 L 132 162 Q 160 168 160 200 Z"
+              fill="#4338ca"/>
+        <!-- Detalles camisa -->
+        <path d="M 100 172 L 94 200 M 100 172 L 106 200" stroke="#6366f1" stroke-width="2" fill="none"/>
+
+        <!-- Cara -->
+        <ellipse cx="100" cy="102" rx="62" ry="68" fill="url(#skinGrad)"/>
+
+        <!-- Cabello -->
+        <path d="M 38 88 Q 38 30 100 28 Q 162 30 162 88 Q 155 55 100 52 Q 45 55 38 88 Z"
+              fill="#1c1917"/>
+        <!-- Fleco -->
+        <path d="M 52 72 Q 60 58 74 62 Q 68 74 62 78 Z" fill="#1c1917"/>
+        <path d="M 148 72 Q 140 58 126 62 Q 132 74 138 78 Z" fill="#1c1917"/>
+        <path d="M 80 54 Q 90 44 110 46 Q 118 56 100 60 Q 84 56 80 54 Z" fill="#1c1917"/>
+
+        <!-- Orejas -->
+        <ellipse cx="38" cy="106" rx="9" ry="13" fill="#f5a76c"/>
+        <ellipse cx="162" cy="106" rx="9" ry="13" fill="#f5a76c"/>
+        <ellipse cx="38" cy="106" rx="5" ry="8" fill="#e8956d"/>
+        <ellipse cx="162" cy="106" rx="5" ry="8" fill="#e8956d"/>
+
+        <!-- Cejas -->
+        <path d="M 68 80 Q 80 74 90 78" stroke="#3d2b1f" stroke-width="3.5"
+              fill="none" stroke-linecap="round"/>
+        <path d="M 110 78 Q 120 74 132 80" stroke="#3d2b1f" stroke-width="3.5"
+              fill="none" stroke-linecap="round"/>
+
+        <!-- Ojos -->
+        <!-- Ojo izquierdo -->
+        <ellipse cx="80" cy="96" rx="13" ry="12" fill="white"/>
+        <ellipse cx="80" cy="97" rx="8" ry="8" fill="#3b1f0e"/>
+        <ellipse cx="80" cy="97" rx="5" ry="5" fill="#1e0a03"/>
+        <circle cx="83" cy="94" r="2.5" fill="white"/>
+        <!-- Pestañas izq -->
+        <path d="M 68 90 Q 67 85 70 83" stroke="#1c1917" stroke-width="1.5" fill="none"/>
+        <path d="M 76 87 Q 75 82 78 81" stroke="#1c1917" stroke-width="1.5" fill="none"/>
+        <path d="M 84 87 Q 85 82 88 83" stroke="#1c1917" stroke-width="1.5" fill="none"/>
+
+        <!-- Ojo derecho -->
+        <ellipse cx="120" cy="96" rx="13" ry="12" fill="white"/>
+        <ellipse cx="120" cy="97" rx="8" ry="8" fill="#3b1f0e"/>
+        <ellipse cx="120" cy="97" rx="5" ry="5" fill="#1e0a03"/>
+        <circle cx="123" cy="94" r="2.5" fill="white"/>
+        <!-- Pestañas der -->
+        <path d="M 108 90 Q 107 85 110 83" stroke="#1c1917" stroke-width="1.5" fill="none"/>
+        <path d="M 116 87 Q 115 82 118 81" stroke="#1c1917" stroke-width="1.5" fill="none"/>
+        <path d="M 124 87 Q 125 82 128 83" stroke="#1c1917" stroke-width="1.5" fill="none"/>
+
+        <!-- Nariz -->
+        <path d="M 97 104 Q 93 118 88 122 Q 100 126 112 122 Q 107 118 103 104"
+              fill="#e8956d" opacity="0.6"/>
+        <ellipse cx="91" cy="122" rx="5" ry="3.5" fill="#d4845a" opacity="0.5"/>
+        <ellipse cx="109" cy="122" rx="5" ry="3.5" fill="#d4845a" opacity="0.5"/>
+
+        <!-- BOCA — cambia con cada visema -->
+        <g id="mouth-group" transform="translate(100, 142)">
+          <!-- Forma de boca por defecto: silencio/reposo -->
+          <path id="mouth-path"
+                d="M -18 0 Q -9 4 0 4 Q 9 4 18 0"
+                fill="none" stroke="#c27451" stroke-width="2.5"
+                stroke-linecap="round"/>
+          <path id="mouth-fill" d="" fill="#8b2635" opacity="0"/>
+          <path id="mouth-teeth" d="" fill="white" opacity="0"/>
+          <path id="mouth-tongue" d="" fill="#d4566a" opacity="0"/>
+        </g>
+
+        <!-- Mejillas (rubor) -->
+        <ellipse cx="68" cy="118" rx="14" ry="8" fill="#f9a8d4" opacity="0.3"/>
+        <ellipse cx="132" cy="118" rx="14" ry="8" fill="#f9a8d4" opacity="0.3"/>
+      </svg>
+    </div>
+
+    <div class="audio-bars idle" id="audio-bars">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+
+    <div class="status" id="status">En espera...</div>
+
+    <div class="controls">
+      <button class="btn-speak" onclick="demoHablar()">▶ Demo: Hablar</button>
+      <button class="btn-outline" onclick="setViseme('sil')">Silencio</button>
+    </div>
+  </div>
+
+  <!-- Panel de visemas de Amazon Polly -->
+  <div class="viseme-panel">
+    <h3>Visemas de Amazon Polly — haz clic para previsualizar</h3>
+    <div class="viseme-grid" id="viseme-grid"></div>
+  </div>
+
+  <p class="note">
+    Amazon Polly devuelve estos códigos de visema con timestamps exactos.<br>
+    El frontend los usa para animar la boca en sincronía con el audio MP3.
+  </p>
+
+<script>
+// ── Definición de visemas de Polly ──────────────────────────────────────────
+// Cada visema define: forma de labios, apertura, si muestra dientes/lengua
+const VISEMES = {
+  // Silencio / reposo
+  sil: {
+    label: 'sil',
+    desc: 'silencio',
+    path:  'M -18 0 Q -9 4 0 4 Q 9 4 18 0',
+    fill:  '',
+    teeth: '',
+    tongue:'',
+  },
+  // P / B / M — labios cerrados
+  p: {
+    label: 'p/b/m',
+    desc: 'labios cerrados',
+    path:  'M -20 0 L 20 0',
+    fill:  '',
+    teeth: '',
+    tongue:'',
+  },
+  // F / V — dientes sobre labio
+  f: {
+    label: 'f/v',
+    desc: 'dientes-labio',
+    path:  'M -16 -2 Q 0 6 16 -2',
+    fill:  'M -16 -2 Q 0 6 16 -2 L 16 2 Q 0 8 -16 2 Z',
+    teeth: 'M -14 -2 L 14 -2 L 14 1 Q 0 3 -14 1 Z',
+    tongue:'',
+  },
+  // T / D — punta lengua
+  t: {
+    label: 't/d',
+    desc: 'lengua-dientes',
+    path:  'M -18 -3 Q 0 10 18 -3',
+    fill:  'M -18 -3 Q 0 10 18 -3 L 16 4 Q 0 14 -16 4 Z',
+    teeth: 'M -15 -3 L 15 -3 L 13 2 Q 0 4 -13 2 Z',
+    tongue:'M -8 4 Q 0 12 8 4 Q 4 8 0 9 Q -4 8 -8 4 Z',
+  },
+  // S / Z — dientes juntos
+  s: {
+    label: 's/z',
+    desc: 'labios estirados',
+    path:  'M -20 -1 Q 0 5 20 -1',
+    fill:  'M -20 -1 Q 0 5 20 -1 L 18 5 Q 0 9 -18 5 Z',
+    teeth: 'M -17 -1 L 17 -1 L 15 3 Q 0 5 -15 3 Z',
+    tongue:'',
+  },
+  // SH / CH
+  S: {
+    label: 'sh/ch',
+    desc: 'labios redondeados',
+    path:  'M -14 -2 Q 0 12 14 -2',
+    fill:  'M -14 -2 Q 0 12 14 -2 L 12 5 Q 0 16 -12 5 Z',
+    teeth: 'M -11 -2 L 11 -2 L 9 4 Q 0 7 -9 4 Z',
+    tongue:'M -7 6 Q 0 14 7 6 Q 2 10 0 11 Q -2 10 -7 6 Z',
+  },
+  // R
+  r: {
+    label: 'r',
+    desc: 'labios juntos',
+    path:  'M -16 0 Q -6 8 0 8 Q 6 8 16 0',
+    fill:  'M -16 0 Q -6 8 0 8 Q 6 8 16 0 L 14 6 Q 0 14 -14 6 Z',
+    teeth: '',
+    tongue:'',
+  },
+  // K / G / NG
+  k: {
+    label: 'k/g',
+    desc: 'boca semiabierta',
+    path:  'M -18 -2 Q 0 14 18 -2',
+    fill:  'M -18 -2 Q 0 14 18 -2 L 16 5 Q 0 18 -16 5 Z',
+    teeth: 'M -15 -2 L 15 -2 L 13 3 Q 0 6 -13 3 Z',
+    tongue:'M -10 8 Q 0 18 10 8 Q 4 13 0 14 Q -4 13 -10 8 Z',
+  },
+  // I — sonido "i" ee
+  i: {
+    label: 'i (ee)',
+    desc: 'sonrisa amplia',
+    path:  'M -22 0 Q -8 10 0 10 Q 8 10 22 0',
+    fill:  'M -22 0 Q -8 10 0 10 Q 8 10 22 0 L 20 7 Q 0 16 -20 7 Z',
+    teeth: 'M -19 0 L 19 0 L 17 5 Q 0 8 -17 5 Z',
+    tongue:'',
+  },
+  // E — sonido "e"
+  e: {
+    label: 'e',
+    desc: 'boca media',
+    path:  'M -20 -1 Q -6 12 0 12 Q 6 12 20 -1',
+    fill:  'M -20 -1 Q -6 12 0 12 Q 6 12 20 -1 L 18 6 Q 0 18 -18 6 Z',
+    teeth: 'M -17 -1 L 17 -1 L 15 5 Q 0 8 -15 5 Z',
+    tongue:'M -9 8 Q 0 16 9 8 Q 3 12 0 13 Q -3 12 -9 8 Z',
+  },
+  // @ — schwa / "a" relajada
+  '@': {
+    label: '@/ə',
+    desc: 'vocal central',
+    path:  'M -18 -2 Q 0 16 18 -2',
+    fill:  'M -18 -2 Q 0 16 18 -2 L 16 6 Q 0 20 -16 6 Z',
+    teeth: 'M -15 -2 L 15 -2 L 13 4 Q 0 7 -13 4 Z',
+    tongue:'M -10 9 Q 0 18 10 9 Q 4 14 0 15 Q -4 14 -10 9 Z',
+  },
+  // A — vocal "a" abierta
+  a: {
+    label: 'a',
+    desc: 'muy abierta',
+    path:  'M -16 -4 Q 0 22 16 -4',
+    fill:  'M -16 -4 Q 0 22 16 -4 L 14 6 Q 0 26 -14 6 Z',
+    teeth: 'M -13 -4 L 13 -4 L 11 3 Q 0 6 -11 3 Z',
+    tongue:'M -11 12 Q 0 24 11 12 Q 4 18 0 20 Q -4 18 -11 12 Z',
+  },
+  // O — vocal "o"
+  o: {
+    label: 'o',
+    desc: 'labios redondos',
+    path:  'M -12 -4 Q -16 12 0 16 Q 16 12 12 -4',
+    fill:  'M -12 -4 Q -16 12 0 16 Q 16 12 12 -4 Z',
+    teeth: '',
+    tongue:'M -7 8 Q 0 16 7 8 Q 2 13 0 14 Q -2 13 -7 8 Z',
+  },
+  // U — vocal "u"
+  u: {
+    label: 'u (oo)',
+    desc: 'labios fruncidos',
+    path:  'M -8 -4 Q -12 10 0 14 Q 12 10 8 -4',
+    fill:  'M -8 -4 Q -12 10 0 14 Q 12 10 8 -4 Z',
+    teeth: '',
+    tongue:'',
+  },
+};
+
+// ── Aplicar visema al SVG ───────────────────────────────────────────────────
+function setViseme(key) {
+  const v = VISEMES[key] || VISEMES['sil'];
+  document.getElementById('mouth-path').setAttribute('d', v.path);
+
+  const fill = document.getElementById('mouth-fill');
+  fill.setAttribute('d', v.fill || '');
+  fill.setAttribute('opacity', v.fill ? '1' : '0');
+
+  const teeth = document.getElementById('mouth-teeth');
+  teeth.setAttribute('d', v.teeth || '');
+  teeth.setAttribute('opacity', v.teeth ? '1' : '0');
+
+  const tongue = document.getElementById('mouth-tongue');
+  tongue.setAttribute('d', v.tongue || '');
+  tongue.setAttribute('opacity', v.tongue ? '1' : '0');
+
+  // Resaltar botón activo
+  document.querySelectorAll('.viseme-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('vbtn-' + key.replace('@','at'));
+  if (btn) btn.classList.add('active');
+}
+
+// ── Generar panel de visemas ────────────────────────────────────────────────
+function buildVisemePanel() {
+  const grid = document.getElementById('viseme-grid');
+  Object.entries(VISEMES).forEach(([key, v]) => {
+    const btn = document.createElement('button');
+    btn.className = 'viseme-btn';
+    btn.id = 'vbtn-' + key.replace('@','at');
+    btn.title = v.desc;
+
+    // Mini SVG de boca
+    btn.innerHTML = `
+      <svg class="viseme-mini" viewBox="-22 -10 44 32" xmlns="http://www.w3.org/2000/svg">
+        <rect x="-22" y="-10" width="44" height="32" rx="4" fill="#0f172a"/>
+        ${v.fill ? `<path d="${v.fill}" fill="#8b2635"/>` : ''}
+        ${v.teeth ? `<path d="${v.teeth}" fill="white"/>` : ''}
+        ${v.tongue ? `<path d="${v.tongue}" fill="#d4566a"/>` : ''}
+        <path d="${v.path}" fill="none" stroke="#f5a76c" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span>${v.label}</span>
+    `;
+    btn.onclick = () => setViseme(key);
+    grid.appendChild(btn);
+  });
+}
+
+// ── Demo de habla simulada ──────────────────────────────────────────────────
+// Secuencia de visemas como los que devuelve Amazon Polly para "Hola, soy el asistente de VOAE"
+const DEMO_SEQUENCE = [
+  { viseme:'sil', ms:0   },
+  { viseme:'o',   ms:120 },
+  { viseme:'i',   ms:240 },
+  { viseme:'t',   ms:340 },  // "Ho-la"
+  { viseme:'a',   ms:420 },
+  { viseme:'sil', ms:550 },
+  { viseme:'s',   ms:620 },
+  { viseme:'o',   ms:700 },  // "soy"
+  { viseme:'i',   ms:780 },
+  { viseme:'sil', ms:850 },
+  { viseme:'e',   ms:920 },
+  { viseme:'t',   ms:1000},  // "el"
+  { viseme:'sil', ms:1080},
+  { viseme:'a',   ms:1150},
+  { viseme:'s',   ms:1230},  // "a-sis"
+  { viseme:'i',   ms:1310},
+  { viseme:'s',   ms:1390},
+  { viseme:'t',   ms:1460},  // "ten-te"
+  { viseme:'e',   ms:1540},
+  { viseme:'sil', ms:1650},
+  { viseme:'t',   ms:1720},  // "de"
+  { viseme:'e',   ms:1800},
+  { viseme:'sil', ms:1880},
+  { viseme:'f',   ms:1950},  // "VO-AE"
+  { viseme:'o',   ms:2050},
+  { viseme:'a',   ms:2160},
+  { viseme:'e',   ms:2280},
+  { viseme:'sil', ms:2450},
+];
+
+let demoRunning = false;
+
+function demoHablar() {
+  if (demoRunning) return;
+  demoRunning = true;
+
+  const bars  = document.getElementById('audio-bars');
+  const status = document.getElementById('status');
+
+  bars.classList.remove('idle');
+  status.textContent = 'Hablando...';
+
+  DEMO_SEQUENCE.forEach(({ viseme, ms }) => {
+    setTimeout(() => setViseme(viseme), ms);
+  });
+
+  const totalMs = DEMO_SEQUENCE[DEMO_SEQUENCE.length - 1].ms + 300;
+  setTimeout(() => {
+    bars.classList.add('idle');
+    status.textContent = 'En espera...';
+    demoRunning = false;
+  }, totalMs);
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────
+buildVisemePanel();
+setViseme('sil');
+</script>
+</body>
+</html>
