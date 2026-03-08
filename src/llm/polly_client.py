@@ -10,7 +10,7 @@ class PollyClient:
     def __init__(self):
         if not PollyConfig.AWS_ACCESS_KEY or not PollyConfig.AWS_SECRET_KEY:
             raise ValueError(
-                "AWS_ACCES_KEY y AWS_SECRET_ACCESS_KEY deben estar configuradas en .env"
+                "AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY deben estar configuradas en .env"
             )
         self.client = boto3.client(
             'polly',

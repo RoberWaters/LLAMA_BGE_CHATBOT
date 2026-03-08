@@ -1,5 +1,5 @@
 """
-FastAPI REST API para Chatbot VOAE
+FastAPI REST API para Chatbot VOAE - Amazon Bedrock
 """
 import sys
 import os
@@ -29,35 +29,33 @@ from datetime import datetime
 
 from chatbot.chatbot import RAGChatbot
 
-from llm.transcription_client import TranscriptionClient
+from llm.transcription_client import TranscriptionClient  # async (Amazon Transcribe)
 from llm.polly_client import PollyClient
 
 # Inicializar FastAPI
 app = FastAPI(
     title="Chatbot VOAE API",
-    description="API REST para el Chatbot de la Vicerrectoría de Orientación y Asuntos Estudiantiles",
-    version="1.0.0"
+    description="API REST para el Chatbot VOAE - Amazon Bedrock",
+    version="2.0.0"
 )
 
-# Configurar CORS para permitir requests desde el frontend
+# Configurar CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],  # React dev servers
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Estado global del chatbot
-chatbot_instance = None
-chat_sessions = {}  # {session_id: chatbot_instance}
-session_llm_providers = {}  # {session_id: llm_provider}
+# Estado global
+chat_sessions = {}
 
 
 transcription_client = None
 
 def get_transcription_client():
-    """Obtiene o crea el cliente de transcripción"""
+    """Obtiene o crea el cliente de transcripcion"""
     global transcription_client
     if transcription_client is None:
         transcription_client = TranscriptionClient()
@@ -78,25 +76,16 @@ def get_polly_client():
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = "default"
-    top_k: Optional[int] = 4
     temperature: Optional[float] = 0.7
-    llm_provider: Optional[str] = None  # "groq" o "deepseek"
 
 
 class ChatResponse(BaseModel):
     answer: str
     session_id: str
-    match_type: Optional[str] = None
-    best_faq_similarity: Optional[float] = None
-    context_type: Optional[str] = None
-    relevant_documents: List[Dict] = []
     timestamp: str
 
 
 class StatsResponse(BaseModel):
-    total_documents: int
-    storage_path: str
-    embedder_model: str
     llm_model: str
     llm_provider: str
     max_history: int
@@ -107,10 +96,6 @@ class HistoryResponse(BaseModel):
     session_id: str
     history: List[Dict]
 
-
-class ModelChangeRequest(BaseModel):
-    session_id: Optional[str] = "default"
-    llm_provider: str  # "groq" o "deepseek"
 
 class TranscriptionResponse(BaseModel):
     text: Optional[str] = None
@@ -126,32 +111,20 @@ class SynthesizeResponse(BaseModel):
 
 
 # Funciones auxiliares
-def get_chatbot(session_id: str = "default", llm_provider: str = None) -> RAGChatbot:
-    """Obtiene o crea una instancia del chatbot para la sesión"""
-    # Si no se especifica proveedor, usar el guardado o default
-    if llm_provider is None:
-        llm_provider = session_llm_providers.get(session_id, "groq")
-
-    # Si no existe el chatbot o cambió el proveedor, recrear
-    if session_id not in chat_sessions or session_llm_providers.get(session_id) != llm_provider:
-        # Cerrar chatbot anterior si existe
-        if session_id in chat_sessions:
-            chat_sessions[session_id].close()
-
-        # Crear nuevo chatbot con el proveedor especificado
-        chat_sessions[session_id] = RAGChatbot(max_history=10, llm_provider=llm_provider)
-        session_llm_providers[session_id] = llm_provider
-
+def get_chatbot(session_id: str = "default") -> RAGChatbot:
+    """Obtiene o crea una instancia del chatbot para la sesion"""
+    if session_id not in chat_sessions:
+        chat_sessions[session_id] = RAGChatbot()
     return chat_sessions[session_id]
 
 
 # Endpoints
 @app.get("/")
 async def root():
-    """Endpoint raíz"""
+    """Endpoint raiz"""
     return {
-        "message": "Chatbot VOAE API",
-        "version": "1.0.0",
+        "message": "Chatbot VOAE API - Bedrock",
+        "version": "2.0.0",
         "docs": "/docs",
         "status": "running"
     }
@@ -168,35 +141,18 @@ async def health_check():
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """
-    Endpoint principal para interactuar con el chatbot
-
-    Args:
-        request: ChatRequest con el mensaje del usuario
-
-    Returns:
-        ChatResponse con la respuesta del chatbot y metadata
-    """
+    """Endpoint principal para interactuar con el chatbot"""
     try:
-        # Obtener chatbot de la sesión (con proveedor LLM si se especifica)
-        chatbot = get_chatbot(request.session_id, request.llm_provider)
+        chatbot = get_chatbot(request.session_id)
 
-        # Procesar mensaje
         result = chatbot.chat(
             user_message=request.message,
-            top_k=request.top_k,
-            temperature=request.temperature,
-            use_rag=True
+            temperature=request.temperature
         )
 
-        # Construir respuesta
         return ChatResponse(
             answer=result.get("answer", "No se pudo generar una respuesta"),
             session_id=request.session_id,
-            match_type=result.get("match_type"),
-            best_faq_similarity=result.get("best_faq_similarity"),
-            context_type=result.get("context_type"),
-            relevant_documents=result.get("relevant_documents", []),
             timestamp=datetime.now().isoformat()
         )
 
@@ -206,52 +162,29 @@ async def chat(request: ChatRequest):
 
 @app.get("/stats", response_model=StatsResponse)
 async def get_stats(session_id: str = "default"):
-    """
-    Obtiene estadísticas del sistema
-
-    Args:
-        session_id: ID de la sesión
-
-    Returns:
-        StatsResponse con estadísticas del sistema
-    """
+    """Obtiene estadisticas del sistema"""
     try:
         chatbot = get_chatbot(session_id)
         stats = chatbot.get_stats()
 
-        # Obtener el proveedor actual de la sesión
-        current_provider = session_llm_providers.get(session_id, "groq")
-
         return StatsResponse(
-            total_documents=stats["total_documents"],
-            storage_path=stats["storage_path"],
-            embedder_model=stats["embedder_model"],
             llm_model=stats["llm_model"],
-            llm_provider=current_provider,
+            llm_provider=stats["llm_provider"],
             max_history=stats["max_history"],
             current_history_length=stats["current_history_length"]
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al obtener estadísticas: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al obtener estadisticas: {str(e)}")
 
 
 @app.get("/history", response_model=HistoryResponse)
 async def get_history(session_id: str = "default"):
-    """
-    Obtiene el historial de conversación de una sesión
-
-    Args:
-        session_id: ID de la sesión
-
-    Returns:
-        HistoryResponse con el historial de la sesión
-    """
+    """Obtiene el historial de conversacion de una sesion"""
     try:
         chatbot = get_chatbot(session_id)
         history = chatbot.get_history()
 
-        # Formatear historial
         formatted_history = [
             {
                 "user_message": user_msg,
@@ -272,15 +205,7 @@ async def get_history(session_id: str = "default"):
 
 @app.post("/clear-history")
 async def clear_history(session_id: str = "default"):
-    """
-    Limpia el historial de conversación de una sesión
-
-    Args:
-        session_id: ID de la sesión
-
-    Returns:
-        Mensaje de confirmación
-    """
+    """Limpia el historial de conversacion de una sesion"""
     try:
         chatbot = get_chatbot(session_id)
         chatbot.clear_history()
@@ -297,86 +222,51 @@ async def clear_history(session_id: str = "default"):
 
 @app.delete("/session/{session_id}")
 async def delete_session(session_id: str):
-    """
-    Elimina una sesión de chat
-
-    Args:
-        session_id: ID de la sesión a eliminar
-
-    Returns:
-        Mensaje de confirmación
-    """
+    """Elimina una sesion de chat"""
     if session_id in chat_sessions:
         chat_sessions[session_id].close()
         del chat_sessions[session_id]
-        session_llm_providers.pop(session_id, None)
         return {
-            "message": f"Sesión {session_id} eliminada",
+            "message": f"Sesion {session_id} eliminada",
             "timestamp": datetime.now().isoformat()
         }
     else:
-        raise HTTPException(status_code=404, detail=f"Sesión {session_id} no encontrada")
+        raise HTTPException(status_code=404, detail=f"Sesion {session_id} no encontrada")
 
 
 @app.get("/sessions")
 async def list_sessions():
-    """
-    Lista todas las sesiones activas
-
-    Returns:
-        Lista de IDs de sesiones activas
-    """
+    """Lista todas las sesiones activas"""
     return {
         "sessions": list(chat_sessions.keys()),
         "count": len(chat_sessions),
         "timestamp": datetime.now().isoformat()
     }
 
+
 @app.post("/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(audio: UploadFile = File(...), language: str = "es"):
-    """
-    Transcribe audio a texto usando Groq Whisper
-
-    Optimizations:
-    - Pre-initialized transcription client (no cold start)
-    - Async file reading
-    - Direct bytes processing (no temp file)
-
-    Args:
-        audio: Archivo de audio (wav, mp3, webm, etc.)
-        language: Código de idioma (default: "es" para español)
-
-    Returns:
-        TranscriptionResponse con el texto transcrito
-    """
-    
+    """Transcribe audio a texto usando Amazon Transcribe Streaming"""
     try:
-        # Read audio bytes asynchronously (faster)
         audio_bytes = await audio.read()
+        print(f"[Transcribe] Recibido: {len(audio_bytes)} bytes, filename={audio.filename}")
+        print(f"[Transcribe] Header: {audio_bytes[:4]}")
 
-        # Descartar audio demasiado corto — Whisper alucina con silencio/ruido
-        # 500 bytes es ~15ms a 256kbps, insuficiente para contener voz real
         if not audio_bytes or len(audio_bytes) < 500:
+            print(f"[Transcribe] Audio muy corto ({len(audio_bytes)} bytes), ignorando")
             return TranscriptionResponse(
                 text=None,
                 timestamp=datetime.now().isoformat()
             )
 
-        # Get pre-initialized transcription client (no initialization delay)
         client = get_transcription_client()
 
-        # Transcribe audio - Groq's LPU makes this very fast
-        text = client.transcribe_audio_bytes(
+        text = await client.transcribe_audio_bytes(
             audio_bytes=audio_bytes,
-            filename=audio.filename or "audio.webm",
+            filename=audio.filename or "audio.wav",
             language=language,
         )
-
-        if text is None:
-            return TranscriptionResponse(
-                text=None,
-                timestamp=datetime.now().isoformat()
-            )
+        print(f"[Transcribe] Resultado: '{text}'")
 
         return TranscriptionResponse(
             text=text,
@@ -384,12 +274,14 @@ async def transcribe_audio(audio: UploadFile = File(...), language: str = "es"):
         )
 
     except Exception as e:
+        import traceback
+        print(f"[Transcribe] ERROR: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error al transcribir audio: {str(e)}")
 
 
 @app.post("/synthesize", response_model=SynthesizeResponse)
 async def synthesize_speech(request: SynthesizeRequest):
-    """Sintetiza texto a audio MP3 usando Amazon Polly"""
+    """Sintetiza texto a audio PCM usando Amazon Polly"""
     try:
         client = get_polly_client()
         audio_base64 = client.synthesize(request.text)
@@ -406,7 +298,7 @@ _ACRONYMS_PATTERN = re.compile(
 )
 
 def preprocess_text_for_tts(text: str) -> str:
-    """Elimina markdown y convierte acrónimos a minúsculas para Polly."""
+    """Elimina markdown y convierte acronimos a minusculas para Polly."""
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'\*(.*?)\*', r'\1', text)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
@@ -416,7 +308,7 @@ def preprocess_text_for_tts(text: str) -> str:
 
 
 def split_sentences(text: str) -> list:
-    """Divide el texto en oraciones para síntesis progresiva."""
+    """Divide el texto en oraciones para sintesis progresiva."""
     parts = re.split(r'(?<=[.!?])\s+', text.strip())
     return [p.strip() for p in parts if p.strip()]
 
@@ -424,38 +316,23 @@ def split_sentences(text: str) -> list:
 @app.post("/chat-stream")
 async def chat_stream(request: ChatRequest):
     """
-    Endpoint SSE: procesa el mensaje RAG y devuelve oraciones con audio PCM
-    para animación en tiempo real con Simli.
+    Endpoint SSE: procesa el mensaje y devuelve oraciones con audio PCM
+    para animacion en tiempo real con Simli.
 
     Eventos SSE:
-      - type: "meta"  → metadata de la respuesta (match_type, sources, etc.)
-      - type: "chunk" → { text, audio_base64 } por cada oración
-      - type: "done"  → fin del stream
-      - type: "error" → mensaje de error
+      - type: "chunk" -> { text, audio_base64 } por cada oracion
+      - type: "done"  -> fin del stream
+      - type: "error" -> mensaje de error
     """
     async def generate():
         try:
-            chatbot = get_chatbot(request.session_id, request.llm_provider)
+            chatbot = get_chatbot(request.session_id)
             result = chatbot.chat(
                 user_message=request.message,
-                top_k=request.top_k,
-                temperature=request.temperature,
-                use_rag=True
+                temperature=request.temperature
             )
 
-            # Enviar metadata primero
-            meta = {
-                "type": "meta",
-                "match_type": result.get("match_type"),
-                "best_faq_similarity": result.get("best_faq_similarity"),
-                "context_type": result.get("context_type"),
-                "relevant_documents": result.get("relevant_documents", []),
-                "timestamp": datetime.now().isoformat(),
-            }
-            yield f"data: {json.dumps(meta)}\n\n"
-            await asyncio.sleep(0)
-
-            # Sintetizar y enviar oración por oración
+            # Sintetizar y enviar oracion por oracion
             polly = get_polly_client()
             answer = result.get("answer", "")
             sentences = split_sentences(answer)
@@ -477,7 +354,7 @@ async def chat_stream(request: ChatRequest):
 
         except Exception as e:
             import traceback
-            print(f"❌ Error en /chat-stream: {traceback.format_exc()}")
+            print(f"Error en /chat-stream: {traceback.format_exc()}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(
@@ -488,53 +365,6 @@ async def chat_stream(request: ChatRequest):
             "X-Accel-Buffering": "no",
         },
     )
-
-
-@app.post("/change-model")
-async def change_model(request: ModelChangeRequest):
-    """
-    Cambia el proveedor de LLM para una sesión
-
-    Args:
-        request: ModelChangeRequest con session_id y llm_provider
-
-    Returns:
-        Confirmación del cambio con el nuevo modelo
-    """
-    try:
-        # Validar proveedor
-        if request.llm_provider not in ["groq", "deepseek"]:
-            raise HTTPException(
-                status_code=400,
-                detail="Proveedor inválido. Usa 'groq' o 'deepseek'"
-            )
-
-        # Forzar recreación del chatbot con nuevo proveedor
-        if request.session_id in chat_sessions:
-            chat_sessions[request.session_id].close()
-            del chat_sessions[request.session_id]
-
-        # Actualizar el proveedor guardado
-        session_llm_providers[request.session_id] = request.llm_provider
-
-        # Crear nuevo chatbot con el proveedor especificado
-        chatbot = get_chatbot(request.session_id, request.llm_provider)
-
-        # Obtener stats del nuevo chatbot
-        stats = chatbot.get_stats()
-
-        return {
-            "message": f"Modelo cambiado exitosamente a {request.llm_provider}",
-            "session_id": request.session_id,
-            "llm_provider": request.llm_provider,
-            "llm_model": stats["llm_model"],
-            "timestamp": datetime.now().isoformat()
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al cambiar modelo: {str(e)}")
 
 
 def _float32_to_wav(float32_bytes: bytes, sample_rate: int = 16000) -> bytes:
@@ -550,9 +380,9 @@ def _float32_to_wav(float32_bytes: bytes, sample_rate: int = 16000) -> bytes:
     header = struct.pack(
         '<4sI4s4sIHHIIHH4sI',
         b'RIFF', 36 + data_size, b'WAVE',
-        b'fmt ', 16, 1, 1,                      # PCM, mono
-        sample_rate, sample_rate * 2,            # sample rate, byte rate
-        2, 16,                                   # block align, bits per sample
+        b'fmt ', 16, 1, 1,
+        sample_rate, sample_rate * 2,
+        2, 16,
         b'data', data_size
     )
     return bytes(header) + bytes(pcm_int16)
@@ -561,9 +391,9 @@ def _float32_to_wav(float32_bytes: bytes, sample_rate: int = 16000) -> bytes:
 @app.websocket("/ws/transcribe")
 async def ws_transcribe(websocket: WebSocket):
     """
-    WebSocket para transcripción de audio PCM en tiempo real.
-    El cliente envía chunks Float32 (binario) y una señal JSON {type:'done'} al terminar.
-    El servidor responde con {text: '...'} vía WebSocket.
+    WebSocket para transcripcion de audio PCM en tiempo real.
+    El cliente envia chunks Float32 (binario) y una senal JSON {type:'done'} al terminar.
+    El servidor responde con {text: '...'} via WebSocket.
     """
     await websocket.accept()
     client = get_transcription_client()
@@ -574,7 +404,6 @@ async def ws_transcribe(websocket: WebSocket):
             message = await websocket.receive()
 
             if 'bytes' in message:
-                # Chunk de audio PCM Float32
                 pcm_buffer.extend(message['bytes'])
 
             elif 'text' in message:
@@ -583,14 +412,14 @@ async def ws_transcribe(websocket: WebSocket):
                     text = None
                     if pcm_buffer:
                         wav_data = _float32_to_wav(bytes(pcm_buffer))
-                        text = client.transcribe_audio_bytes(wav_data, 'audio.wav', 'es')
+                        text = await client.transcribe_audio_bytes(wav_data, 'audio.wav', 'es')
                     await websocket.send_text(json.dumps({'text': text or ''}))
                     break
 
     except WebSocketDisconnect:
         pass
     except Exception as e:
-        print(f"[WS] Error en transcripción: {e}")
+        print(f"[WS] Error en transcripcion: {e}")
         try:
             await websocket.send_text(json.dumps({'text': ''}))
         except Exception:
@@ -598,10 +427,9 @@ async def ws_transcribe(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    # Ejecutar servidor
-    print("🚀 Iniciando API del Chatbot VOAE...")
-    print("📍 URL: http://localhost:8000")
-    print("📚 Docs: http://localhost:8000/docs")
+    print("Iniciando API del Chatbot VOAE (Bedrock)...")
+    print("URL: http://localhost:8000")
+    print("Docs: http://localhost:8000/docs")
 
     uvicorn.run(
         app,

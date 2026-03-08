@@ -6,9 +6,6 @@ import {
   Trash2,
   BarChart3,
   BookOpen,
-  CheckCircle,
-  AlertCircle,
-  FileText
 } from 'lucide-react';
 import './App.css';
 
@@ -29,8 +26,6 @@ function App() {
   const [stats, setStats] = useState(null);
 
   const [showStats, setShowStats] = useState(false);
-  const [llmProvider, setLlmProvider] = useState('groq'); // 'groq' o 'deepseek'
-  const [isChangingModel, setIsChangingModel] = useState(false);
   const messagesEndRef = useRef(null);
   const sessionId = useRef(`session-${Date.now()}`);
   const avatarRef = useRef(null);
@@ -81,10 +76,6 @@ function App() {
     try {
       const response = await axios.get(`${API_BASE_URL}/stats?session_id=${sessionId.current}`);
       setStats(response.data);
-      // Actualizar el proveedor actual desde las estadísticas
-      if (response.data.llm_provider) {
-        setLlmProvider(response.data.llm_provider);
-      }
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
@@ -124,9 +115,7 @@ function App() {
         body: JSON.stringify({
           message,
           session_id: sessionId.current,
-          top_k: 4,
           temperature: 0.7,
-          llm_provider: llmProvider,
         }),
       });
 
@@ -134,7 +123,6 @@ function App() {
       const decoder = new TextDecoder();
       let buffer = '';
       let fullText = '';
-      let msgMeta = {};
 
       while (true) {
         const { done, value } = await reader.read();
@@ -142,7 +130,7 @@ function App() {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        buffer = lines.pop(); // conservar línea incompleta
+        buffer = lines.pop();
 
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
@@ -153,26 +141,16 @@ function App() {
             continue;
           }
 
-          if (data.type === 'meta') {
-            msgMeta = {
-              matchType: data.match_type,
-              similarity: data.best_faq_similarity,
-              contextType: data.context_type,
-              sources: data.relevant_documents,
-            };
-          } else if (data.type === 'chunk') {
+          if (data.type === 'chunk') {
             fullText += (fullText ? ' ' : '') + data.text;
-            // Actualizar el último mensaje (el placeholder del asistente)
             setMessages(prev => {
               const arr = [...prev];
               arr[arr.length - 1] = {
                 ...arr[arr.length - 1],
                 content: fullText,
-                ...msgMeta,
               };
               return arr;
             });
-            // Enviar audio PCM al avatar Simli
             avatarRef.current?.speak(data.audio_base64);
           } else if (data.type === 'done') {
             setIsLoading(false);
@@ -207,40 +185,6 @@ function App() {
     }
   };
 
-  const changeModel = async (newProvider) => {
-    if (isChangingModel || isLoading) return;
-
-    setIsChangingModel(true);
-    try {
-      const response = await axios.post(`${API_BASE_URL}/change-model`, {
-        session_id: sessionId.current,
-        llm_provider: newProvider
-      });
-
-      setLlmProvider(newProvider);
-
-      // Mensaje de confirmación en el chat
-      const confirmationMessage = {
-        role: 'system',
-        content: `Modelo cambiado a ${newProvider === 'groq' ? 'Groq (Llama 3.3 70B)' : 'DeepSeek'}. El historial se mantiene.`,
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, confirmationMessage]);
-
-      // Actualizar estadísticas
-      await fetchStats();
-    } catch (error) {
-      console.error('Error changing model:', error);
-      const errorMessage = {
-        role: 'error',
-        content: 'Error al cambiar el modelo. Por favor intenta de nuevo.',
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsChangingModel(false);
-    }
-  };
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -249,23 +193,6 @@ function App() {
     }
   };
 
-  const getMatchIcon = (matchType) => {
-    switch(matchType) {
-      case 'high': return <CheckCircle size={16} className="match-icon high" />;
-      case 'medium': return <AlertCircle size={16} className="match-icon medium" />;
-      case 'low': return <FileText size={16} className="match-icon low" />;
-      default: return null;
-    }
-  };
-
-  const getMatchLabel = (matchType) => {
-    switch(matchType) {
-      case 'high': return 'FAQ Exacto';
-      case 'medium': return 'FAQ + Docs';
-      case 'low': return 'Documentos';
-      default: return '';
-    }
-  };
 
   return (
     <div className="app-container">
@@ -288,20 +215,6 @@ function App() {
               </div>
             </div>
             <div className="header-actions">
-              {/* Selector de Modelo */}
-              <div className="model-selector">
-                <select
-                  value={llmProvider}
-                  onChange={(e) => changeModel(e.target.value)}
-                  disabled={isChangingModel || isLoading}
-                  className="model-select"
-                  title="Cambiar modelo LLM"
-                >
-                  <option value="groq">Groq (Llama 3.3 70B)</option>
-                  <option value="deepseek">DeepSeek</option>
-                </select>
-              </div>
-
               <button
                 className="icon-button"
                 onClick={() => setShowStats(!showStats)}
@@ -323,12 +236,8 @@ function App() {
           {showStats && stats && (
             <div className="stats-panel">
               <div className="stat-item">
-                <span className="stat-label">Documentos:</span>
-                <span className="stat-value">{stats.total_documents}</span>
-              </div>
-              <div className="stat-item">
                 <span className="stat-label">Proveedor:</span>
-                <span className="stat-value">{stats.llm_provider === 'groq' ? 'Groq' : 'DeepSeek'}</span>
+                <span className="stat-value">{stats.llm_provider}</span>
               </div>
               <div className="stat-item">
                 <span className="stat-label">Modelo:</span>
@@ -377,37 +286,6 @@ function App() {
                     <ReactMarkdown>{message.content}</ReactMarkdown>
                   ) : (
                     <p>{message.content}</p>
-                  )}
-
-                  {/* Match Info */}
-                  {message.matchType && (
-                    <div className="match-info">
-                      {getMatchIcon(message.matchType)}
-                      <span className="match-label">{getMatchLabel(message.matchType)}</span>
-                      {message.similarity !== null && message.similarity > 0 && (
-                        <span className="similarity">
-                          ({(message.similarity * 100).toFixed(1)}%)
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Sources */}
-                  {message.sources && message.sources.length > 0 && (
-                    <div className="sources">
-                      <p className="sources-title">Fuentes:</p>
-                      {message.sources.slice(0, 3).map((source, idx) => (
-                        <div key={idx} className="source-item">
-                          <span className="source-icon">
-                            {source.type === 'faq' ? '❓' : '📄'}
-                          </span>
-                          <span className="source-name">{source.filename}</span>
-                          <span className="source-sim">
-                            {(source.similarity * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                      ))}
-                    </div>
                   )}
 
                   <span className="message-time">{message.timestamp}</span>

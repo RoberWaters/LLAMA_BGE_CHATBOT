@@ -68,7 +68,18 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     // Auto-inicia al montar. El cleanup cierra el cliente al desmontar.
     useEffect(() => {
         startNewClient();
+
+        // Si tras 8s no conectó, reintentar una vez
+        const retryTimer = setTimeout(() => {
+            if (!isReadyRef.current && !isFailedRef.current) {
+                console.log('[Simli] timeout — reconectando');
+                clientRef.current?.close();
+                startNewClient();
+            }
+        }, 8000);
+
         return () => {
+            clearTimeout(retryTimer);
             if (clientRef.current) {
                 console.log('[Simli] cleanup (close)');
                 isReadyRef.current = false;
@@ -148,10 +159,6 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
                 autoPlay
                 playsInline
                 className="simli-video"
-                onPlay={() => {
-                    setConnectionStatus('ready');
-                    isReadyRef.current = true;
-                }}
             />
             <audio ref={audioRef} autoPlay />
             {connectionStatus !== 'ready' && (
