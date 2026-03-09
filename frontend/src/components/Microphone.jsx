@@ -76,8 +76,13 @@ export default function Microphone({ onRecorded, onStartRecording }) {
         onRecordedRef.current = onRecorded;
     }, [onRecorded]);
 
-    // Get microphone access on mount
+    // Get microphone access on mount (requires HTTPS)
     useEffect(() => {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            console.warn("Microphone not available (requires HTTPS)");
+            setDisabled(true);
+            return;
+        }
         navigator.mediaDevices.getUserMedia({
             audio: {
                 echoCancellation: true,

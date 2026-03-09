@@ -46,22 +46,20 @@ class BedrockClient:
         # Resolver el ARN del modelo. Inference profiles necesitan account ID.
         self.model_arn = self._resolve_model_arn()
 
-        self.client = boto3.client(
-            'bedrock-agent-runtime',
-            region_name=self.region,
-            aws_access_key_id=BedrockConfig.AWS_ACCESS_KEY,
-            aws_secret_access_key=BedrockConfig.AWS_SECRET_KEY,
-        )
+        client_kwargs = {'region_name': self.region}
+        if BedrockConfig.AWS_ACCESS_KEY and BedrockConfig.AWS_SECRET_KEY:
+            client_kwargs['aws_access_key_id'] = BedrockConfig.AWS_ACCESS_KEY
+            client_kwargs['aws_secret_access_key'] = BedrockConfig.AWS_SECRET_KEY
+        self.client = boto3.client('bedrock-agent-runtime', **client_kwargs)
 
     def _resolve_model_arn(self) -> str:
         """Resuelve el ARN del modelo, buscando inference profiles si es necesario."""
         if self.model_id.startswith(('us.', 'global.', 'eu.')):
-            bedrock = boto3.client(
-                'bedrock',
-                region_name=self.region,
-                aws_access_key_id=BedrockConfig.AWS_ACCESS_KEY,
-                aws_secret_access_key=BedrockConfig.AWS_SECRET_KEY,
-            )
+            client_kwargs = {'region_name': self.region}
+            if BedrockConfig.AWS_ACCESS_KEY and BedrockConfig.AWS_SECRET_KEY:
+                client_kwargs['aws_access_key_id'] = BedrockConfig.AWS_ACCESS_KEY
+                client_kwargs['aws_secret_access_key'] = BedrockConfig.AWS_SECRET_KEY
+            bedrock = boto3.client('bedrock', **client_kwargs)
             profiles = bedrock.list_inference_profiles()['inferenceProfileSummaries']
             for p in profiles:
                 if p['inferenceProfileId'] == self.model_id:

@@ -2,7 +2,7 @@
 
 // Returns a promise to transcribe the given audio blob
 export default async function transcribe(audioBlob){
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
     const requestBody = new FormData();
     requestBody.append('audio', audioBlob, "recording.wav");
     try{

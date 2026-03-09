@@ -8,16 +8,11 @@ from config import PollyConfig
 
 class PollyClient:
     def __init__(self):
-        if not PollyConfig.AWS_ACCESS_KEY or not PollyConfig.AWS_SECRET_KEY:
-            raise ValueError(
-                "AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY deben estar configuradas en .env"
-            )
-        self.client = boto3.client(
-            'polly',
-            region_name=PollyConfig.AWS_REGION,
-            aws_access_key_id=PollyConfig.AWS_ACCESS_KEY,
-            aws_secret_access_key=PollyConfig.AWS_SECRET_KEY,
-        )
+        client_kwargs = {'region_name': PollyConfig.AWS_REGION}
+        if PollyConfig.AWS_ACCESS_KEY and PollyConfig.AWS_SECRET_KEY:
+            client_kwargs['aws_access_key_id'] = PollyConfig.AWS_ACCESS_KEY
+            client_kwargs['aws_secret_access_key'] = PollyConfig.AWS_SECRET_KEY
+        self.client = boto3.client('polly', **client_kwargs)
         self.voice_id      = PollyConfig.VOICE_ID
         self.engine        = PollyConfig.ENGINE
         self.language_code = PollyConfig.LANGUAGE_CODE

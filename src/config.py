@@ -14,9 +14,11 @@ load_dotenv()
 class BedrockConfig:
     """Configuracion de Amazon Bedrock"""
 
-    AWS_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
-    AWS_REGION     = os.getenv('AWS_REGION', 'us-east-1')
+    # Credenciales explicitas solo para desarrollo local.
+    # En Lambda, dejar vacias — boto3 usa el IAM role automaticamente.
+    AWS_ACCESS_KEY = os.getenv('APP_AWS_ACCESS_KEY_ID')
+    AWS_SECRET_KEY = os.getenv('APP_AWS_SECRET_ACCESS_KEY')
+    AWS_REGION     = os.getenv('BEDROCK_REGION', os.getenv('AWS_REGION', 'us-east-1'))
 
     # Modelo LLM
     LLM_MODEL_ID = os.getenv('BEDROCK_MODEL_ID', 'us.anthropic.claude-3-5-haiku-20241022-v1:0')
@@ -61,8 +63,8 @@ class APIConfig:
 
 class PollyConfig:
     """Configuracion de Amazon Polly TTS"""
-    AWS_ACCESS_KEY = os.getenv('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+    AWS_ACCESS_KEY = os.getenv('APP_AWS_ACCESS_KEY_ID')
+    AWS_SECRET_KEY = os.getenv('APP_AWS_SECRET_ACCESS_KEY')
     AWS_REGION     = os.getenv('POLLY_REGION', os.getenv('AWS_REGION', 'us-east-1'))
     VOICE_ID       = os.getenv('POLLY_VOICE', 'Lupe')
     ENGINE         = os.getenv('POLLY_ENGINE', 'neural')
@@ -100,9 +102,6 @@ def get_config_summary() -> dict:
 def validate_config():
     """Valida que la configuracion tenga valores validos"""
     errors = []
-
-    if not BedrockConfig.AWS_ACCESS_KEY or not BedrockConfig.AWS_SECRET_KEY:
-        errors.append("AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY deben estar configuradas")
 
     if not BedrockConfig.KNOWLEDGE_BASE_ID:
         errors.append("BEDROCK_KNOWLEDGE_BASE_ID debe estar configurada")

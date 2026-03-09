@@ -15,7 +15,7 @@ import SimliAvatar from './components/SimliAvatar.jsx';
 import transcribe from './services/speechToText.mjs';
 
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 function App() {
   const [messages, setMessages] = useState([]);
@@ -91,86 +91,42 @@ function App() {
     // Detener avatar si estaba hablando
     avatarRef.current?.stop();
 
-    const userMessage = {
+    setMessages(prev => [...prev, {
       role: 'user',
       content: message,
       timestamp: new Date().toLocaleTimeString()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    }]);
     setInputMessage('');
     setIsLoading(true);
 
-    // Agregar placeholder del asistente que se irá llenando con los chunks
-    setMessages(prev => [...prev, {
-      role: 'assistant',
-      content: '',
-      timestamp: new Date().toLocaleTimeString(),
-    }]);
-
     try {
-      const response = await fetch(`${API_BASE_URL}/chat-stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message,
-          session_id: sessionId.current,
-          temperature: 0.7,
-        }),
+      const response = await axios.post(`${API_BASE_URL}/chat-with-audio`, {
+        message,
+        session_id: sessionId.current,
+        temperature: 0.7,
       });
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let fullText = '';
+      const { answer, sentences } = response.data;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // Mostrar texto completo
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: answer,
+        timestamp: new Date().toLocaleTimeString(),
+      }]);
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          let data;
-          try {
-            data = JSON.parse(line.slice(6));
-          } catch {
-            continue;
-          }
-
-          if (data.type === 'chunk') {
-            fullText += (fullText ? ' ' : '') + data.text;
-            setMessages(prev => {
-              const arr = [...prev];
-              arr[arr.length - 1] = {
-                ...arr[arr.length - 1],
-                content: fullText,
-              };
-              return arr;
-            });
-            avatarRef.current?.speak(data.audio_base64);
-          } else if (data.type === 'done') {
-            setIsLoading(false);
-          } else if (data.type === 'error') {
-            throw new Error(data.message);
-          }
-        }
+      // Enviar audio al avatar oración por oración
+      for (const sentence of sentences) {
+        avatarRef.current?.speak(sentence.audio_base64);
       }
+
     } catch (error) {
       console.error('Error sending message:', error);
-      setMessages(prev => {
-        const arr = [...prev];
-        // Reemplazar el placeholder con mensaje de error
-        arr[arr.length - 1] = {
-          role: 'error',
-          content: 'Lo siento, ocurrió un error al procesar tu mensaje. Por favor intenta de nuevo.',
-          timestamp: new Date().toLocaleTimeString(),
-        };
-        return arr;
-      });
+      setMessages(prev => [...prev, {
+        role: 'error',
+        content: 'Lo siento, ocurrió un error al procesar tu mensaje. Por favor intenta de nuevo.',
+        timestamp: new Date().toLocaleTimeString(),
+      }]);
     } finally {
       setIsLoading(false);
     }

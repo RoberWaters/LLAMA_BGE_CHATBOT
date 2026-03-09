@@ -72,14 +72,12 @@ class TranscriptionClient:
         self.access_key = BedrockConfig.AWS_ACCESS_KEY
         self.secret_key = BedrockConfig.AWS_SECRET_KEY
 
-        if not self.access_key or not self.secret_key:
-            raise ValueError(
-                "AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY deben estar configuradas en .env"
-            )
-
-        # Exportar credenciales para que el SDK de Transcribe las tome
-        os.environ.setdefault("AWS_ACCESS_KEY_ID", self.access_key)
-        os.environ.setdefault("AWS_SECRET_ACCESS_KEY", self.secret_key)
+        # Exportar credenciales para que el SDK de Transcribe las tome.
+        # En Lambda, las credenciales vienen del IAM role automaticamente.
+        if self.access_key:
+            os.environ.setdefault("AWS_ACCESS_KEY_ID", self.access_key)
+        if self.secret_key:
+            os.environ.setdefault("AWS_SECRET_ACCESS_KEY", self.secret_key)
         os.environ.setdefault("AWS_DEFAULT_REGION", self.region)
 
     def _is_hallucination(self, text: str) -> bool:
