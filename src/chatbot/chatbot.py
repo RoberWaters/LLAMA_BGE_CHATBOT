@@ -25,6 +25,7 @@ class RAGChatbot:
         self,
         user_message: str,
         temperature: float = 0.7,
+        bedrock_session_id: str = None,
         **kwargs,
     ) -> dict:
         """
@@ -33,6 +34,7 @@ class RAGChatbot:
         Args:
             user_message: Mensaje del usuario
             temperature: Temperatura para generacion
+            bedrock_session_id: Session ID de Bedrock del frontend (para persistencia tras cold starts)
 
         Returns:
             Diccionario con respuesta y metadatos
@@ -42,6 +44,10 @@ class RAGChatbot:
                 "answer": "Por favor, escribe un mensaje.",
                 "error": "Empty message"
             }
+
+        # Restaurar session ID si el frontend lo envía y no hay uno activo
+        if bedrock_session_id and not self._bedrock_session_id:
+            self._bedrock_session_id = bedrock_session_id
 
         try:
             answer, self._bedrock_session_id = self.llm_client.chat(
@@ -62,6 +68,7 @@ class RAGChatbot:
             if len(self.conversation_history) > self.max_history:
                 self.conversation_history = self.conversation_history[-self.max_history:]
 
+        result["bedrock_session_id"] = self._bedrock_session_id
         return result
 
     def clear_history(self):

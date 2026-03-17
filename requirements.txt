@@ -1,6 +1,6 @@
 python-dotenv
 boto3
-amazon-transcribe
+groq>=0.4.0
 
 # FastAPI y servidor
 fastapi>=0.104.0

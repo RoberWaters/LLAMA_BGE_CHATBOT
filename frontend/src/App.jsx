@@ -28,6 +28,7 @@ function App() {
   const [showStats, setShowStats] = useState(false);
   const messagesEndRef = useRef(null);
   const sessionId = useRef(`session-${Date.now()}`);
+  const bedrockSessionId = useRef(null);
   const avatarRef = useRef(null);
 
   // Auto-scroll to bottom
@@ -103,10 +104,12 @@ function App() {
       const response = await axios.post(`${API_BASE_URL}/chat-with-audio`, {
         message,
         session_id: sessionId.current,
+        bedrock_session_id: bedrockSessionId.current,
         temperature: 0.7,
       });
 
-      const { answer, sentences } = response.data;
+      const { answer, sentences, bedrock_session_id } = response.data;
+      if (bedrock_session_id) bedrockSessionId.current = bedrock_session_id;
 
       // Mostrar texto completo
       setMessages(prev => [...prev, {
@@ -135,6 +138,7 @@ function App() {
   const clearHistory = async () => {
     try {
       await axios.post(`${API_BASE_URL}/clear-history?session_id=${sessionId.current}`);
+      bedrockSessionId.current = null;
       setMessages([]);
     } catch (error) {
       console.error('Error clearing history:', error);
@@ -277,7 +281,7 @@ function App() {
             <textarea
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               placeholder="Escribe tu pregunta aquí..."
               rows="1"
               disabled={isLoading || isTranscribing}

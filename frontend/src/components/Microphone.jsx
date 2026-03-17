@@ -97,6 +97,13 @@ export default function Microphone({ onRecorded, onStartRecording }) {
             console.error("Microphone access denied:", err);
             setDisabled(true);
         });
+
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+                streamRef.current = null;
+            }
+        };
     }, []);
 
     // Listen for microphone permission changes

@@ -19,7 +19,6 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict
-import json
 import re
 from datetime import datetime
 
@@ -76,11 +75,13 @@ class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = "default"
     temperature: Optional[float] = 0.7
+    bedrock_session_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
     answer: str
     session_id: str
+    bedrock_session_id: Optional[str] = None
     timestamp: str
 
 
@@ -88,6 +89,7 @@ class ChatWithAudioResponse(BaseModel):
     answer: str
     sentences: List[Dict]
     session_id: str
+    bedrock_session_id: Optional[str] = None
     timestamp: str
 
 
@@ -173,12 +175,14 @@ async def chat(request: ChatRequest):
 
         result = chatbot.chat(
             user_message=request.message,
-            temperature=request.temperature
+            temperature=request.temperature,
+            bedrock_session_id=request.bedrock_session_id,
         )
 
         return ChatResponse(
             answer=result.get("answer", "No se pudo generar una respuesta"),
             session_id=request.session_id,
+            bedrock_session_id=result.get("bedrock_session_id"),
             timestamp=datetime.now().isoformat()
         )
 
@@ -196,7 +200,8 @@ async def chat_with_audio(request: ChatRequest):
         chatbot = get_chatbot(request.session_id)
         result = chatbot.chat(
             user_message=request.message,
-            temperature=request.temperature
+            temperature=request.temperature,
+            bedrock_session_id=request.bedrock_session_id,
         )
 
         answer = result.get("answer", "")
@@ -214,6 +219,7 @@ async def chat_with_audio(request: ChatRequest):
             answer=answer,
             sentences=sentences,
             session_id=request.session_id,
+            bedrock_session_id=result.get("bedrock_session_id"),
             timestamp=datetime.now().isoformat()
         )
 
@@ -307,7 +313,7 @@ async def list_sessions():
 
 @router.post("/transcribe", response_model=TranscriptionResponse)
 async def transcribe_audio(audio: UploadFile = File(...), language: str = "es"):
-    """Transcribe audio a texto usando Amazon Transcribe Streaming"""
+    """Transcribe audio a texto usando Groq Whisper Large V3"""
     try:
         audio_bytes = await audio.read()
 

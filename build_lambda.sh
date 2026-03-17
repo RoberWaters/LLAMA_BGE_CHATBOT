@@ -19,7 +19,7 @@ pip install \
     pydantic \
     python-multipart \
     python-dotenv \
-    amazon-transcribe \
+    groq \
     -t "$DIST_DIR" -q --upgrade
 
 # Copiar codigo fuente

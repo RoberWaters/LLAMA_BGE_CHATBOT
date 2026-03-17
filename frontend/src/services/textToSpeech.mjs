@@ -1,7 +1,7 @@
 // Text to Speech Service — conecta con el endpoint /synthesize (Amazon Polly)
 
 export default async function synthesize(text) {
-    const apiUrl = import.meta.env.VITE_API_URL;
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
     try {
         const response = await fetch(`${apiUrl}/synthesize`, {
             method: 'POST',

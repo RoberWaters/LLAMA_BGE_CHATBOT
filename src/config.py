@@ -51,10 +51,20 @@ class APIConfig:
     HOST = os.getenv('API_HOST', '127.0.0.1')
     PORT = int(os.getenv('API_PORT', '8000'))
 
-    CORS_ORIGINS = os.getenv('API_CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173').split(',')
+    CORS_ORIGINS = [o.strip() for o in os.getenv('API_CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173').split(',')]
 
     REQUEST_TIMEOUT = int(os.getenv('API_REQUEST_TIMEOUT', '30'))
     LOG_LEVEL = os.getenv('API_LOG_LEVEL', 'info')
+
+
+# =============================================================================
+# Groq Configuration (Whisper STT)
+# =============================================================================
+
+class GroqConfig:
+    """Configuracion de Groq (Whisper STT)"""
+    API_KEY       = os.getenv('GROQ_API_KEY')
+    WHISPER_MODEL = os.getenv('GROQ_WHISPER_MODEL', 'whisper-large-v3')
 
 
 # =============================================================================
@@ -84,6 +94,9 @@ def get_config_summary() -> dict:
             'region': BedrockConfig.AWS_REGION,
             'max_tokens': BedrockConfig.DEFAULT_MAX_TOKENS,
         },
+        'groq': {
+            'model': GroqConfig.WHISPER_MODEL,
+        },
         'polly': {
             'voice': PollyConfig.VOICE_ID,
             'engine': PollyConfig.ENGINE,
@@ -105,6 +118,9 @@ def validate_config():
 
     if not BedrockConfig.KNOWLEDGE_BASE_ID:
         errors.append("BEDROCK_KNOWLEDGE_BASE_ID debe estar configurada")
+
+    if not GroqConfig.API_KEY:
+        errors.append("GROQ_API_KEY debe estar configurada")
 
     if errors:
         raise ValueError(f"Errores de configuracion:\n" + "\n".join(f"- {e}" for e in errors))
