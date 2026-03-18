@@ -25,7 +25,9 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     const savedStreamRef = useRef(null);
 
     // Crea e inicia un nuevo SimliClient (API v3).
-    const startNewClient = useCallback(async () => {
+    // Acepta un AbortSignal opcional para cancelar si el componente se desmonta
+    // antes de que termine la conexión (evita doble conexión con React StrictMode).
+    const startNewClient = useCallback(async (signal) => {
         const myId = ++_clientCounter;
         console.log(`[Simli #${myId}] creando cliente`);
         isReadyRef.current = false;
@@ -46,8 +48,16 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             });
         } catch (e) {
             console.error(`[Simli #${myId}] error obteniendo token:`, e);
-            isFailedRef.current = true;
-            setConnectionStatus('failed');
+            if (!signal?.aborted) {
+                isFailedRef.current = true;
+                setConnectionStatus('failed');
+            }
+            return;
+        }
+
+        // Si el componente se desmontó mientras esperábamos el token, no continuar
+        if (signal?.aborted) {
+            console.log(`[Simli #${myId}] cancelado (desmontado antes de conectar)`);
             return;
         }
 
@@ -107,10 +117,13 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     }, []);
 
     // Auto-inicia al montar. El cleanup detiene el cliente al desmontar.
+    // Usa AbortController para cancelar si StrictMode desmonta antes de conectar.
     useEffect(() => {
-        startNewClient();
+        const abort = new AbortController();
+        startNewClient(abort.signal);
 
         return () => {
+            abort.abort();
             if (clientRef.current) {
                 console.log('[Simli] cleanup (stop)');
                 isReadyRef.current = false;
@@ -176,6 +189,11 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         },
     }), [startNewClient]);
 
+    // Si falló la conexión, no mostrar nada
+    if (connectionStatus === 'failed') {
+        return null;
+    }
+
     return (
         <div className="simli-avatar-wrapper">
             <video
@@ -185,16 +203,10 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
                 className="simli-video"
             />
             <audio ref={audioRef} autoPlay />
-            {connectionStatus !== 'ready' && (
+            {connectionStatus === 'loading' && (
                 <div className="avatar-loading-overlay">
-                    {connectionStatus === 'failed' ? (
-                        <span className="avatar-loading-text">Error de conexión</span>
-                    ) : (
-                        <>
-                            <div className="avatar-spinner" />
-                            <span className="avatar-loading-text">Cargando avatar...</span>
-                        </>
-                    )}
+                    <div className="avatar-spinner" />
+                    <span className="avatar-loading-text">Cargando avatar...</span>
                 </div>
             )}
         </div>
