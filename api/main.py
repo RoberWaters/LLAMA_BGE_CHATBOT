@@ -17,7 +17,7 @@ os.chdir(BASE_DIR)
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 import re
 from datetime import datetime
@@ -72,7 +72,7 @@ def get_polly_client():
 
 # Modelos Pydantic
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., max_length=10000)
     session_id: Optional[str] = "default"
     temperature: Optional[float] = 0.7
     bedrock_session_id: Optional[str] = None
@@ -315,7 +315,12 @@ async def list_sessions():
 async def transcribe_audio(audio: UploadFile = File(...), language: str = "es"):
     """Transcribe audio a texto usando Groq Whisper Large V3"""
     try:
+        # Limite de 25 MB (maximo soportado por Groq Whisper)
+        MAX_AUDIO_SIZE = 25 * 1024 * 1024
         audio_bytes = await audio.read()
+
+        if len(audio_bytes) > MAX_AUDIO_SIZE:
+            raise HTTPException(status_code=413, detail="El archivo de audio excede el limite de 25 MB")
 
         if not audio_bytes or len(audio_bytes) < 500:
             return TranscriptionResponse(

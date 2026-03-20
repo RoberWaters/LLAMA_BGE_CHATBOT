@@ -3,7 +3,11 @@ Cliente Amazon Polly para síntesis de voz
 """
 import boto3
 import base64
+import logging
+from botocore.exceptions import ClientError, BotoCoreError
 from config import PollyConfig
+
+logger = logging.getLogger(__name__)
 
 
 class PollyClient:
@@ -28,13 +32,25 @@ class PollyClient:
         Returns:
             Audio PCM codificado en base64
         """
-        response = self.client.synthesize_speech(
-            Text=text,
-            OutputFormat='pcm',
-            SampleRate='16000',
-            VoiceId=self.voice_id,
-            Engine=self.engine,
-            LanguageCode=self.language_code,
-        )
-        audio_bytes = response['AudioStream'].read()
+        try:
+            response = self.client.synthesize_speech(
+                Text=text,
+                OutputFormat='pcm',
+                SampleRate='16000',
+                VoiceId=self.voice_id,
+                Engine=self.engine,
+                LanguageCode=self.language_code,
+            )
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            logger.error("Polly API error [%s]: %s", error_code, e)
+            if error_code == 'TextLengthExceededException':
+                raise RuntimeError("El texto excede el limite de Polly (3000 caracteres).") from e
+            raise RuntimeError(f"Error de Polly ({error_code}): {e.response['Error']['Message']}") from e
+        except BotoCoreError as e:
+            logger.error("Polly connection error: %s", e)
+            raise RuntimeError("No se pudo conectar con Amazon Polly.") from e
+
+        with response['AudioStream'] as stream:
+            audio_bytes = stream.read()
         return base64.b64encode(audio_bytes).decode('utf-8')

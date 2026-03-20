@@ -86,8 +86,19 @@ function App() {
     await sendMessageWithText(inputMessage);
   }
 
+  const MAX_MESSAGE_LENGTH = 10000;
+
   const sendMessageWithText = async (message) => {
     if (!message.trim() || isLoading) return;
+
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      setMessages(prev => [...prev, {
+        role: 'error',
+        content: `Tu mensaje sobrepasa el límite de ${MAX_MESSAGE_LENGTH.toLocaleString()} caracteres permitidos. Por favor acórtalo e intenta de nuevo.`,
+        timestamp: new Date().toLocaleTimeString(),
+      }]);
+      return;
+    }
 
     // Detener avatar si estaba hablando
     avatarRef.current?.stop();
@@ -120,7 +131,7 @@ function App() {
 
       // Enviar audio al avatar oración por oración
       for (const sentence of sentences) {
-        avatarRef.current?.speak(sentence.audio_base64);
+        await avatarRef.current?.speak(sentence.audio_base64);
       }
 
     } catch (error) {

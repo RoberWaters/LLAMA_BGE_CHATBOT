@@ -6,8 +6,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import boto3
+import logging
+from botocore.exceptions import ClientError, BotoCoreError
 from typing import Optional, Tuple
 from config import BedrockConfig
+
+logger = logging.getLogger(__name__)
 
 PROMPT_TEMPLATE = """Eres el Asistente Virtual de VOAE (Vicerectoria de Orientacion y Asuntos Estudiantiles de la UNAH).
 
@@ -118,7 +122,21 @@ class BedrockClient:
         if session_id:
             kwargs['sessionId'] = session_id
 
-        response = self.client.retrieve_and_generate(**kwargs)
+        try:
+            response = self.client.retrieve_and_generate(**kwargs)
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            logger.error("Bedrock API error [%s]: %s", error_code, e)
+            if error_code == 'ThrottlingException':
+                raise RuntimeError("El servicio esta temporalmente saturado. Intenta de nuevo en unos segundos.") from e
+            if error_code in ('AccessDeniedException', 'UnauthorizedAccess'):
+                raise RuntimeError("Error de permisos al acceder a Bedrock. Verifica la configuracion de AWS.") from e
+            if error_code == 'ValidationException':
+                raise RuntimeError(f"Error de validacion en Bedrock: {e.response['Error']['Message']}") from e
+            raise RuntimeError(f"Error de Bedrock ({error_code}): {e.response['Error']['Message']}") from e
+        except BotoCoreError as e:
+            logger.error("Bedrock connection error: %s", e)
+            raise RuntimeError("No se pudo conectar con Amazon Bedrock. Verifica la conexion y credenciales.") from e
 
         text = response['output']['text'].strip()
         new_session_id = response.get('sessionId', session_id)
