@@ -24,8 +24,11 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     // Guarda el srcObject mientras el micrófono está activo
     const savedStreamRef = useRef(null);
 
+    // Ref que controla si la instancia actual del efecto sigue activa
+    const cancelledRef = useRef(false);
+
     // Crea e inicia un nuevo SimliClient (API v3).
-    const startNewClient = useCallback(async () => {
+    const startNewClient = useCallback(async (cancelled) => {
         const myId = ++_clientCounter;
         console.log(`[Simli #${myId}] creando cliente`);
         isReadyRef.current = false;
@@ -46,8 +49,16 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             });
         } catch (e) {
             console.error(`[Simli #${myId}] error obteniendo token:`, e);
-            isFailedRef.current = true;
-            setConnectionStatus('failed');
+            if (!cancelled.current) {
+                isFailedRef.current = true;
+                setConnectionStatus('failed');
+            }
+            return;
+        }
+
+        // Abortar si el efecto fue desmontado mientras obteníamos el token
+        if (cancelled.current) {
+            console.log(`[Simli #${myId}] abortado antes de crear cliente`);
             return;
         }
 
@@ -65,7 +76,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         client.on('start', () => {
             const isCurrent = clientRef.current === client;
             console.log(`[Simli #${myId}] 'start', isCurrent=${isCurrent}`);
-            if (isCurrent) {
+            if (isCurrent && !cancelled.current) {
                 isReadyRef.current = true;
                 setConnectionStatus('ready');
                 console.log(`[Simli #${myId}] LISTO para recibir audio`);
@@ -77,7 +88,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
 
         client.on('error', (e) => {
             console.error(`[Simli #${myId}] error:`, e);
-            if (clientRef.current === client) {
+            if (clientRef.current === client && !cancelled.current) {
                 isReadyRef.current = false;
                 isFailedRef.current = true;
                 setConnectionStatus('failed');
@@ -86,7 +97,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
 
         client.on('startup_error', (e) => {
             console.error(`[Simli #${myId}] startup_error:`, e);
-            if (clientRef.current === client) {
+            if (clientRef.current === client && !cancelled.current) {
                 isReadyRef.current = false;
                 isFailedRef.current = true;
                 setConnectionStatus('failed');
@@ -98,7 +109,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             await client.start();
         } catch (e) {
             console.error(`[Simli #${myId}] start() falló:`, e);
-            if (clientRef.current === client) {
+            if (clientRef.current === client && !cancelled.current) {
                 isReadyRef.current = false;
                 isFailedRef.current = true;
                 setConnectionStatus('failed');
@@ -108,9 +119,13 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
 
     // Auto-inicia al montar. El cleanup detiene el cliente al desmontar.
     useEffect(() => {
-        startNewClient();
+        const cancelled = { current: false };
+        cancelledRef.current = false;
+        startNewClient(cancelled);
 
         return () => {
+            cancelled.current = true;
+            cancelledRef.current = true;
             if (clientRef.current) {
                 console.log('[Simli] cleanup (stop)');
                 isReadyRef.current = false;
@@ -171,8 +186,9 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         },
         resume: () => {
             console.log('[Simli] resumiendo (reconectando)');
+            cancelledRef.current = false;
             if (audioRef.current) audioRef.current.muted = false;
-            startNewClient();
+            startNewClient(cancelledRef);
         },
     }), [startNewClient]);
 
