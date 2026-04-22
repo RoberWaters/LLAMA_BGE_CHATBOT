@@ -90,6 +90,9 @@ function App() {
 
     // Detener avatar si estaba hablando
     avatarRef.current?.stop();
+    // Asegurar conexión con Simli en paralelo con Bedrock (ahorra minutos: solo
+    // conectamos al enviar pregunta; Simli cierra la sesión tras 60s de inactividad).
+    avatarRef.current?.ensureConnected();
 
     setMessages(prev => [...prev, {
       role: 'user',
@@ -284,7 +287,7 @@ function App() {
             />
             <Microphone
               onRecorded={setAudio}
-              onStartRecording={() => { avatarRef.current?.stop(); avatarRef.current?.mute(); }}
+              onStartRecording={() => { avatarRef.current?.stop(); avatarRef.current?.mute(); avatarRef.current?.ensureConnected(); }}
             />
             <button
               onClick={sendMessage}

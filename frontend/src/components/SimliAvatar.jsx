@@ -10,7 +10,6 @@ function base64ToUint8Array(base64) {
     return bytes;
 }
 
-// Contador global para identificar instancias de cliente
 let _clientCounter = 0;
 
 const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
@@ -19,12 +18,10 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     const clientRef = useRef(null);
     const isReadyRef = useRef(false);
     const isFailedRef = useRef(false);
-    // 'loading' | 'ready' | 'failed'
-    const [connectionStatus, setConnectionStatus] = useState('loading');
-    // Guarda el srcObject mientras el micrófono está activo
+    const connectingRef = useRef(false);
+    // 'idle' | 'loading' | 'ready' | 'failed'
+    const [connectionStatus, setConnectionStatus] = useState('idle');
     const savedStreamRef = useRef(null);
-
-    // Ref que controla si la instancia actual del efecto sigue activa
     const cancelledRef = useRef(false);
 
     // Crea e inicia un nuevo SimliClient (API v3).
@@ -33,9 +30,9 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
         console.log(`[Simli #${myId}] creando cliente`);
         isReadyRef.current = false;
         isFailedRef.current = false;
+        connectingRef.current = true;
         setConnectionStatus('loading');
 
-        // 1. Obtener session token desde la API de Simli
         let tokenData;
         try {
             tokenData = await generateSimliSessionToken({
@@ -49,6 +46,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             });
         } catch (e) {
             console.error(`[Simli #${myId}] error obteniendo token:`, e);
+            connectingRef.current = false;
             if (!cancelled.current) {
                 isFailedRef.current = true;
                 setConnectionStatus('failed');
@@ -56,19 +54,18 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             return;
         }
 
-        // Abortar si el efecto fue desmontado mientras obteníamos el token
         if (cancelled.current) {
             console.log(`[Simli #${myId}] abortado antes de crear cliente`);
+            connectingRef.current = false;
             return;
         }
 
-        // 2. Crear cliente con transport livekit (no requiere ICE servers)
         const client = new SimliClient(
             tokenData.session_token,
             videoRef.current,
             audioRef.current,
-            null,       // iceServers no requeridos en modo livekit
-            undefined,  // logLevel por defecto
+            null,
+            undefined,
             'livekit'
         );
         clientRef.current = client;
@@ -78,11 +75,23 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             console.log(`[Simli #${myId}] 'start', isCurrent=${isCurrent}`);
             if (isCurrent && !cancelled.current) {
                 isReadyRef.current = true;
+                connectingRef.current = false;
                 setConnectionStatus('ready');
                 console.log(`[Simli #${myId}] LISTO para recibir audio`);
-                // Forzar play en el video para evitar pantalla verde en WebRTC/Livekit
                 videoRef.current?.play().catch(() => {});
                 audioRef.current?.play().catch(() => {});
+            }
+        });
+
+        // Simli cierra la sesión tras maxIdleTime (60s sin audio) o maxSessionLength.
+        // No auto-reconectamos: la próxima pregunta llamará ensureConnected() de nuevo.
+        client.on('disconnected', () => {
+            console.log(`[Simli #${myId}] desconectado (sesión cerrada por Simli)`);
+            if (clientRef.current === client) {
+                clientRef.current = null;
+                isReadyRef.current = false;
+                connectingRef.current = false;
+                if (!cancelled.current) setConnectionStatus('idle');
             }
         });
 
@@ -90,6 +99,7 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             console.error(`[Simli #${myId}] error:`, e);
             if (clientRef.current === client && !cancelled.current) {
                 isReadyRef.current = false;
+                connectingRef.current = false;
                 isFailedRef.current = true;
                 setConnectionStatus('failed');
             }
@@ -99,32 +109,29 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
             console.error(`[Simli #${myId}] startup_error:`, e);
             if (clientRef.current === client && !cancelled.current) {
                 isReadyRef.current = false;
+                connectingRef.current = false;
                 isFailedRef.current = true;
                 setConnectionStatus('failed');
             }
         });
 
-        // 3. Conectar (el cliente ya maneja reintentos internamente)
         try {
             await client.start();
         } catch (e) {
             console.error(`[Simli #${myId}] start() falló:`, e);
             if (clientRef.current === client && !cancelled.current) {
                 isReadyRef.current = false;
+                connectingRef.current = false;
                 isFailedRef.current = true;
                 setConnectionStatus('failed');
             }
         }
     }, []);
 
-    // Auto-inicia al montar. El cleanup detiene el cliente al desmontar.
+    // Cleanup al desmontar. No auto-inicia: la conexión ocurre on-demand al enviar pregunta.
     useEffect(() => {
-        const cancelled = { current: false };
         cancelledRef.current = false;
-        startNewClient(cancelled);
-
         return () => {
-            cancelled.current = true;
             cancelledRef.current = true;
             if (clientRef.current) {
                 console.log('[Simli] cleanup (stop)');
@@ -137,10 +144,16 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
     }, []);
 
     useImperativeHandle(ref, () => ({
+        // Conecta si no hay sesión activa. Idempotente: no-op si ya conectado o conectando.
+        ensureConnected: () => {
+            if (clientRef.current && isReadyRef.current) return;
+            if (connectingRef.current) return;
+            cancelledRef.current = false;
+            startNewClient(cancelledRef);
+        },
         speak: async (pcmBase64) => {
             if (!pcmBase64) return;
             console.log(`[Simli speak] isReadyRef=${isReadyRef.current}`);
-            // Poll hasta 2s para que Simli conecte; abortar si falla
             let attempts = 0;
             while (!isReadyRef.current && !isFailedRef.current && attempts < 20) {
                 await new Promise(r => setTimeout(r, 100));
@@ -178,18 +191,6 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
                 audioRef.current.play().catch(() => {});
             }
         },
-        pause: () => {
-            console.log('[Simli] pausando (desconectando)');
-            isReadyRef.current = false;
-            clientRef.current?.stop().catch(() => {});
-            if (audioRef.current) audioRef.current.muted = true;
-        },
-        resume: () => {
-            console.log('[Simli] resumiendo (reconectando)');
-            cancelledRef.current = false;
-            if (audioRef.current) audioRef.current.muted = false;
-            startNewClient(cancelledRef);
-        },
     }), [startNewClient]);
 
     return (
@@ -205,11 +206,13 @@ const SimliAvatar = forwardRef(function SimliAvatar(_, ref) {
                 <div className="avatar-loading-overlay">
                     {connectionStatus === 'failed' ? (
                         <span className="avatar-loading-text">Error de conexión</span>
-                    ) : (
+                    ) : connectionStatus === 'loading' ? (
                         <>
                             <div className="avatar-spinner" />
                             <span className="avatar-loading-text">Cargando avatar...</span>
                         </>
+                    ) : (
+                        <span className="avatar-loading-text">Avatar en espera</span>
                     )}
                 </div>
             )}

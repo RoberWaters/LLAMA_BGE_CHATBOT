@@ -103,7 +103,7 @@ class TranscriptionClient:
         with wave.open(io.BytesIO(wav_bytes), "rb") as w:
             return w.readframes(w.getnframes())
 
-    async def _stream_transcribe(self, pcm_bytes: bytes, language: str) -> str:
+    async def _stream_transcribe(self, pcm_bytes: bytes, language: str, sample_rate: int) -> str:
         """Envia PCM raw a Amazon Transcribe Streaming y devuelve el texto."""
         from amazon_transcribe.client import TranscribeStreamingClient
         from amazon_transcribe.handlers import TranscriptResultStreamHandler
@@ -115,7 +115,7 @@ class TranscriptionClient:
 
         stream_kwargs = {
             "language_code": lang_code,
-            "media_sample_rate_hz": 16000,
+            "media_sample_rate_hz": sample_rate,
             "media_encoding": "pcm",
         }
 
@@ -192,12 +192,13 @@ class TranscriptionClient:
             if audio_bytes[:4] != b"RIFF":
                 raise ValueError("Formato de audio no soportado. Se espera WAV (RIFF).")
 
-            # Log propiedades del WAV
+            # Log propiedades del WAV y extraer sample rate real
             import wave as _wave
             _w = _wave.open(io.BytesIO(audio_bytes), "rb")
-            print(f"[Transcribe] WAV: channels={_w.getnchannels()}, rate={_w.getframerate()}, "
+            sample_rate = _w.getframerate()
+            print(f"[Transcribe] WAV: channels={_w.getnchannels()}, rate={sample_rate}, "
                   f"sampwidth={_w.getsampwidth()}, frames={_w.getnframes()}, "
-                  f"duration={_w.getnframes()/_w.getframerate():.2f}s")
+                  f"duration={_w.getnframes()/sample_rate:.2f}s")
             _w.close()
 
             pcm_bytes = self._wav_to_pcm(audio_bytes)
@@ -206,7 +207,7 @@ class TranscriptionClient:
             if not pcm_bytes:
                 return None
 
-            text = await self._stream_transcribe(pcm_bytes, language)
+            text = await self._stream_transcribe(pcm_bytes, language, sample_rate)
             print(f"[Transcribe] Raw text: '{text}' ({len(text)} chars)")
 
             if self._is_hallucination(text):

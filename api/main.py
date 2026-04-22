@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict
+import asyncio
 import json
 import re
 from datetime import datetime
@@ -171,10 +172,16 @@ async def chat(request: ChatRequest):
     try:
         chatbot = get_chatbot(request.session_id)
 
-        result = chatbot.chat(
-            user_message=request.message,
-            temperature=request.temperature
-        )
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(chatbot.chat, request.message, request.temperature),
+                timeout=22.0
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=503,
+                detail="El asistente tardó demasiado en responder. Por favor intenta de nuevo."
+            )
 
         return ChatResponse(
             answer=result.get("answer", "No se pudo generar una respuesta"),
@@ -182,6 +189,8 @@ async def chat(request: ChatRequest):
             timestamp=datetime.now().isoformat()
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el mensaje: {str(e)}")
 
@@ -194,10 +203,17 @@ async def chat_with_audio(request: ChatRequest):
     """
     try:
         chatbot = get_chatbot(request.session_id)
-        result = chatbot.chat(
-            user_message=request.message,
-            temperature=request.temperature
-        )
+
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(chatbot.chat, request.message, request.temperature),
+                timeout=22.0
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=503,
+                detail="El asistente tardó demasiado en responder. Por favor intenta de nuevo."
+            )
 
         answer = result.get("answer", "")
         polly = get_polly_client()
@@ -207,7 +223,13 @@ async def chat_with_audio(request: ChatRequest):
             tts_text = preprocess_text_for_tts(sentence)
             if not tts_text:
                 continue
-            audio_b64 = polly.synthesize(tts_text)
+            try:
+                audio_b64 = await asyncio.wait_for(
+                    asyncio.to_thread(polly.synthesize, tts_text),
+                    timeout=4.0
+                )
+            except asyncio.TimeoutError:
+                audio_b64 = ""
             sentences.append({"text": sentence, "audio_base64": audio_b64})
 
         return ChatWithAudioResponse(
@@ -217,6 +239,8 @@ async def chat_with_audio(request: ChatRequest):
             timestamp=datetime.now().isoformat()
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar el mensaje: {str(e)}")
 
