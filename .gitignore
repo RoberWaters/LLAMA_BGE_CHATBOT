@@ -59,3 +59,10 @@ test.md
 
 # Windows Zone Identifier files
 *:Zone.Identifier
+
+# Lambda build artifacts
+lambda_function.zip
+lambda_package/
+
+# Stray root package-lock (frontend tiene el suyo propio)
+/package-lock.json

@@ -1,14 +1,10 @@
 python-dotenv
-sentence-transformers
-transformers
-accelerate
-numpy
-requests
-groq
-chromadb
+boto3
+amazon-transcribe
 
 # FastAPI y servidor
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
-python-multipart>=0.0.6  # Required for file uploads
+python-multipart>=0.0.6
+mangum>=0.19.0

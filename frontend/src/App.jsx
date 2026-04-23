@@ -6,41 +6,35 @@ import {
   Trash2,
   BarChart3,
   BookOpen,
-  CheckCircle,
-  AlertCircle,
-  FileText
 } from 'lucide-react';
 import './App.css';
 
 // Components
 import Microphone from './components/Microphone.jsx';
-
-// Services 
+import SimliAvatar from './components/SimliAvatar.jsx';
 import transcribe from './services/speechToText.mjs';
 
-const API_BASE_URL = 'http://localhost:8000';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 function App() {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [stats, setStats] = useState(null);
-  const [showStats, setShowStats] = useState(false);
-  const [llmProvider, setLlmProvider] = useState('groq'); // 'groq' o 'deepseek'
-  const [isChangingModel, setIsChangingModel] = useState(false);
   const [audio, setAudio] = useState(null);
+  const [stats, setStats] = useState(null);
+
+  const [showStats, setShowStats] = useState(false);
   const messagesEndRef = useRef(null);
   const sessionId = useRef(`session-${Date.now()}`);
+  const avatarRef = useRef(null);
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(() => {
-    console.log("Input: ", inputMessage);
-  })
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
@@ -50,38 +44,38 @@ function App() {
     fetchStats();
   }, []);
 
-  // Realizar transcripción y envío del mensaje cuando se grabe un nuevo audio
+  // Transcribir audio cuando el Microphone entrega un blob
   useEffect(() => {
     if (!audio) return;
-    const fetchData = async () => {
-      setIsTranscribing(true);
-      const transcription = await transcribe(audio);
-      setIsTranscribing(false);
-      const text = transcription?.text;
-      // There was an error when trying to transcribe the audio, show an error message in the chat
-      if (text == null){
-        const errorMessage = {
-          role: 'error',
-          content: 'Lo siento, no pude entenderte en este momento. Por favor intenta de nuevo o escribe tu pregunta.',
-          timestamp: new Date().toLocaleTimeString()
-        };
-        setMessages(prev => [...prev, errorMessage]);
-        return;
-      }
-      setInputMessage(text);
-      sendMessageWithText(text);
-    }
-    fetchData();
+    setIsTranscribing(true);
+    transcribe(audio)
+      .then(data => handleTranscriptionText(data?.text?.trim() || null))
+      .catch(() => handleTranscriptionText(null))
+      .finally(() => {
+        setIsTranscribing(false);
+        setAudio(null);
+      });
   }, [audio]);
+
+  // Manejar resultado de transcripción
+  const handleTranscriptionText = (text) => {
+    avatarRef.current?.unmute();
+    if (!text) {
+      setMessages(prev => [...prev, {
+        role: 'error',
+        content: 'Lo siento, no pude entenderte en este momento. Por favor intenta de nuevo o escribe tu pregunta.',
+        timestamp: new Date().toLocaleTimeString()
+      }]);
+      return;
+    }
+    setInputMessage(text);
+    sendMessageWithText(text);
+  };
 
   const fetchStats = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/stats?session_id=${sessionId.current}`);
       setStats(response.data);
-      // Actualizar el proveedor actual desde las estadísticas
-      if (response.data.llm_provider) {
-        setLlmProvider(response.data.llm_provider);
-      }
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
@@ -93,58 +87,49 @@ function App() {
 
   const sendMessageWithText = async (message) => {
     if (!message.trim() || isLoading) return;
-    speechSynthesis.cancel();
 
-    const userMessage = {
+    // Detener avatar si estaba hablando
+    avatarRef.current?.stop();
+    // Asegurar conexión con Simli en paralelo con Bedrock (ahorra minutos: solo
+    // conectamos al enviar pregunta; Simli cierra la sesión tras 60s de inactividad).
+    avatarRef.current?.ensureConnected();
+
+    setMessages(prev => [...prev, {
       role: 'user',
       content: message,
       timestamp: new Date().toLocaleTimeString()
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    }]);
     setInputMessage('');
     setIsLoading(true);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/chat`, {
-        message: message,
+      const response = await axios.post(`${API_BASE_URL}/chat-with-audio`, {
+        message,
         session_id: sessionId.current,
-        top_k: 4,
         temperature: 0.7,
-        llm_provider: llmProvider  // Enviar proveedor actual
       });
 
-      const assistantMessage = {
+      const { answer, sentences } = response.data;
+
+      // Mostrar texto completo
+      setMessages(prev => [...prev, {
         role: 'assistant',
-        content: response.data.answer,
+        content: answer,
         timestamp: new Date().toLocaleTimeString(),
-        matchType: response.data.match_type,
-        similarity: response.data.best_faq_similarity,
-        contextType: response.data.context_type,
-        sources: response.data.relevant_documents
-      };
+      }]);
 
-      setMessages(prev => [...prev, assistantMessage]);
+      // Enviar audio al avatar oración por oración
+      for (const sentence of sentences) {
+        avatarRef.current?.speak(sentence.audio_base64);
+      }
 
-      // Read the message out-loud (strip markdown + lowercase acronyms for TTS)
-      const plainText = response.data.answer
-        .replace(/\*\*(.*?)\*\*/g, '$1')
-        .replace(/\*(.*?)\*/g, '$1')
-        .replace(/^#{1,6}\s+/gm, '')
-        .replace(/^[-*]\s+/gm, '')
-        .replace(/\b(VOAE|UNAH|UNAH-VS|VRA|DIPP|PAC|PASEE|PROCAD|PROSENE|CIVU|PAIE|PAI-E|PAPE|PHUMA|IAG)\b/g,
-          match => match.toLowerCase());
-      let utterance = new SpeechSynthesisUtterance(plainText);
-      const synth = window.speechSynthesis.getVoices();
-      speechSynthesis.speak(utterance);
     } catch (error) {
       console.error('Error sending message:', error);
-      const errorMessage = {
+      setMessages(prev => [...prev, {
         role: 'error',
         content: 'Lo siento, ocurrió un error al procesar tu mensaje. Por favor intenta de nuevo.',
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, errorMessage]);
+        timestamp: new Date().toLocaleTimeString(),
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -159,40 +144,6 @@ function App() {
     }
   };
 
-  const changeModel = async (newProvider) => {
-    if (isChangingModel || isLoading) return;
-
-    setIsChangingModel(true);
-    try {
-      const response = await axios.post(`${API_BASE_URL}/change-model`, {
-        session_id: sessionId.current,
-        llm_provider: newProvider
-      });
-
-      setLlmProvider(newProvider);
-
-      // Mensaje de confirmación en el chat
-      const confirmationMessage = {
-        role: 'system',
-        content: `Modelo cambiado a ${newProvider === 'groq' ? 'Groq (Llama 3.3 70B)' : 'DeepSeek'}. El historial se mantiene.`,
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, confirmationMessage]);
-
-      // Actualizar estadísticas
-      await fetchStats();
-    } catch (error) {
-      console.error('Error changing model:', error);
-      const errorMessage = {
-        role: 'error',
-        content: 'Error al cambiar el modelo. Por favor intenta de nuevo.',
-        timestamp: new Date().toLocaleTimeString()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-    } finally {
-      setIsChangingModel(false);
-    }
-  };
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -201,26 +152,12 @@ function App() {
     }
   };
 
-  const getMatchIcon = (matchType) => {
-    switch(matchType) {
-      case 'high': return <CheckCircle size={16} className="match-icon high" />;
-      case 'medium': return <AlertCircle size={16} className="match-icon medium" />;
-      case 'low': return <FileText size={16} className="match-icon low" />;
-      default: return null;
-    }
-  };
-
-  const getMatchLabel = (matchType) => {
-    switch(matchType) {
-      case 'high': return 'FAQ Exacto';
-      case 'medium': return 'FAQ + Docs';
-      case 'low': return 'Documentos';
-      default: return '';
-    }
-  };
 
   return (
     <div className="app-container">
+      <div className="avatar-panel">
+        <SimliAvatar ref={avatarRef} />
+      </div>
       <div className="chat-container">
         {/* Header */}
         <div className="chat-header">
@@ -237,20 +174,6 @@ function App() {
               </div>
             </div>
             <div className="header-actions">
-              {/* Selector de Modelo */}
-              <div className="model-selector">
-                <select
-                  value={llmProvider}
-                  onChange={(e) => changeModel(e.target.value)}
-                  disabled={isChangingModel || isLoading}
-                  className="model-select"
-                  title="Cambiar modelo LLM"
-                >
-                  <option value="deepseek">DeepSeek</option>
-                  <option value="groq">Groq (Llama 3.3 70B)</option>
-                </select>
-              </div>
-
               <button
                 className="icon-button"
                 onClick={() => setShowStats(!showStats)}
@@ -272,12 +195,8 @@ function App() {
           {showStats && stats && (
             <div className="stats-panel">
               <div className="stat-item">
-                <span className="stat-label">Documentos:</span>
-                <span className="stat-value">{stats.total_documents}</span>
-              </div>
-              <div className="stat-item">
                 <span className="stat-label">Proveedor:</span>
-                <span className="stat-value">{stats.llm_provider === 'groq' ? 'Groq' : 'DeepSeek'}</span>
+                <span className="stat-value">{stats.llm_provider}</span>
               </div>
               <div className="stat-item">
                 <span className="stat-label">Modelo:</span>
@@ -328,37 +247,6 @@ function App() {
                     <p>{message.content}</p>
                   )}
 
-                  {/* Match Info */}
-                  {message.matchType && (
-                    <div className="match-info">
-                      {getMatchIcon(message.matchType)}
-                      <span className="match-label">{getMatchLabel(message.matchType)}</span>
-                      {message.similarity !== null && message.similarity > 0 && (
-                        <span className="similarity">
-                          ({(message.similarity * 100).toFixed(1)}%)
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Sources */}
-                  {message.sources && message.sources.length > 0 && (
-                    <div className="sources">
-                      <p className="sources-title">Fuentes:</p>
-                      {message.sources.slice(0, 3).map((source, idx) => (
-                        <div key={idx} className="source-item">
-                          <span className="source-icon">
-                            {source.type === 'faq' ? '❓' : '📄'}
-                          </span>
-                          <span className="source-name">{source.filename}</span>
-                          <span className="source-sim">
-                            {(source.similarity * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   <span className="message-time">{message.timestamp}</span>
                 </div>
                 {message.role === 'user' && (
@@ -397,7 +285,10 @@ function App() {
               rows="1"
               disabled={isLoading || isTranscribing}
             />
-            <Microphone onRecorded={setAudio} />
+            <Microphone
+              onRecorded={setAudio}
+              onStartRecording={() => { avatarRef.current?.stop(); avatarRef.current?.mute(); avatarRef.current?.ensureConnected(); }}
+            />
             <button
               onClick={sendMessage}
               disabled={!inputMessage.trim() || isLoading || isTranscribing}
